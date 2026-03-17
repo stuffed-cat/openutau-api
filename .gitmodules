@@ -1,0 +1,3 @@
+[submodule "third_party/openutau"]
+	path = third_party/openutau
+	url = https://gitfox.studio/gitfox/upstream/openutau.git

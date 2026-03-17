@@ -1,0 +1,6 @@
+@OpenUtau.Api_HostAddress = http://localhost:5040
+
+GET {{OpenUtau.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

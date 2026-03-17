@@ -1,0 +1,39 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{14D4B55B-38C4-4025-9E18-13C607A2D8C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenUtau.Api", "src\OpenUtau.Api\OpenUtau.Api.csproj", "{A4980440-AB5E-460F-90CE-15AF18E53FC4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "third_party", "third_party", "{DBB49EA9-CB40-43D2-A2FD-BEF54DA04C26}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "openutau", "openutau", "{AAA07835-9D87-444F-AFB2-84FF9329C01B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenUtau.Core", "third_party\openutau\OpenUtau.Core\OpenUtau.Core.csproj", "{2E15FE26-12B0-4A25-A1B7-0DCA723385F9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A4980440-AB5E-460F-90CE-15AF18E53FC4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4980440-AB5E-460F-90CE-15AF18E53FC4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4980440-AB5E-460F-90CE-15AF18E53FC4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4980440-AB5E-460F-90CE-15AF18E53FC4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E15FE26-12B0-4A25-A1B7-0DCA723385F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E15FE26-12B0-4A25-A1B7-0DCA723385F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E15FE26-12B0-4A25-A1B7-0DCA723385F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E15FE26-12B0-4A25-A1B7-0DCA723385F9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A4980440-AB5E-460F-90CE-15AF18E53FC4} = {14D4B55B-38C4-4025-9E18-13C607A2D8C2}
+		{AAA07835-9D87-444F-AFB2-84FF9329C01B} = {DBB49EA9-CB40-43D2-A2FD-BEF54DA04C26}
+		{2E15FE26-12B0-4A25-A1B7-0DCA723385F9} = {AAA07835-9D87-444F-AFB2-84FF9329C01B}
+	EndGlobalSection
+EndGlobal
