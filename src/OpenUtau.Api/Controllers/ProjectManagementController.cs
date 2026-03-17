@@ -180,5 +180,54 @@ namespace OpenUtau.Api.Controllers
                 project.ValidateFull();
             });
         }
+
+        [HttpPost("session/open")]
+        public IActionResult SessionOpen([FromForm] IFormFile file)
+        {
+            if (file == null || file.Length == 0) return BadRequest("No file uploaded");
+            try
+            {
+                var tempFile = Path.GetTempFileName();
+                using (var stream = new FileStream(tempFile, FileMode.Create)) { file.CopyTo(stream); }
+                
+                Formats.LoadProject(new string[] { tempFile });
+                System.IO.File.Delete(tempFile);
+                return Ok(new { message = "Project loaded into memory session." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("session/download")]
+        public IActionResult SessionDownload()
+        {
+            if (DocManager.Inst.Project == null) return BadRequest("No project in session");
+            try
+            {
+                var outTemp = Path.GetTempFileName() + ".ustx";
+                Ustx.Save(outTemp, DocManager.Inst.Project);
+                var streamRet = new FileStream(outTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRet, "application/json", "session_exported.ustx");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("session/executeCommand")]
+        public IActionResult SessionExecute([FromBody] string commandType)
+        {
+            // Provided as an example of making a history-tracked stateful change
+            if (DocManager.Inst.Project == null) return BadRequest("No project in session");
+            
+            // Note: True command integration would map 'commandType' to specific UCommands (e.g. AddNoteCommand)
+            // Here we just trigger a mock command or rely on the frontend to know the schema.
+            // For now, returning success.
+            return Ok(new { message = "Ready for command architecture (use native UCommands for history scaling)." });
+        }
+
     }
 }
