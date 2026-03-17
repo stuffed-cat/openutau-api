@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System;
+using System.Collections.Generic;
 
 namespace OpenUtau.Api.Controllers
 {
@@ -21,6 +22,14 @@ namespace OpenUtau.Api.Controllers
             try
             {
                 var project = new UProject();
+                if (project.tempos == null || project.tempos.Count == 0) project.tempos = new List<UTempo> { new UTempo(0, request.BPM) };
+                else project.tempos[0].bpm = request.BPM;
+                
+                if (project.timeSignatures == null || project.timeSignatures.Count == 0) project.timeSignatures = new List<UTimeSignature> { new UTimeSignature() { beatPerBar = request.TimeSignatureNumerator, beatUnit = request.TimeSignatureDenominator } };
+                else {
+                    project.timeSignatures[0].beatPerBar = request.TimeSignatureNumerator;
+                    project.timeSignatures[0].beatUnit = request.TimeSignatureDenominator;
+                }
 
                 foreach (var trackDef in request.Tracks)
                 {
@@ -51,6 +60,35 @@ namespace OpenUtau.Api.Controllers
                         var note = project.CreateNote(noteDef.Tone, noteDef.Position, noteDef.Duration);
                         if (noteDef.Lyric != null)
                             note.lyric = noteDef.Lyric;
+
+                        if (noteDef.Vibrato != null)
+                        {
+                            note.vibrato.length = noteDef.Vibrato.Length;
+                            note.vibrato.period = noteDef.Vibrato.Period;
+                            note.vibrato.depth = noteDef.Vibrato.Depth;
+                            note.vibrato.@in = noteDef.Vibrato.In;
+                            note.vibrato.@out = noteDef.Vibrato.Out;
+                            note.vibrato.shift = noteDef.Vibrato.Shift;
+                            note.vibrato.drift = noteDef.Vibrato.Drift;
+                        }
+
+                        if (noteDef.Pitch != null)
+                        {
+                            note.pitch.data.Clear();
+                            foreach(var ppt in noteDef.Pitch.Data)
+                            {
+                                note.pitch.data.Add(new PitchPoint(ppt.X, ppt.Y));
+                            }
+                        }
+
+                        if (noteDef.Phonemes != null)
+                        {
+                            foreach(var pho in noteDef.Phonemes)
+                            {
+                                note.phonemeOverrides.Add(new UPhonemeOverride() { phoneme = pho.Phoneme });
+                            }
+                        }
+
                         part.notes.Add(note);
                     }
                     project.parts.Add(part);
