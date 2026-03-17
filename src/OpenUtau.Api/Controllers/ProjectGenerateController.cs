@@ -22,25 +22,27 @@ namespace OpenUtau.Api.Controllers
             try
             {
                 var project = new UProject();
-                if (project.tempos == null || project.tempos.Count == 0) project.tempos = new List<UTempo> { new UTempo(0, request.BPM) };
-                else project.tempos[0].bpm = request.BPM;
-                
-                if (project.timeSignatures == null || project.timeSignatures.Count == 0) project.timeSignatures = new List<UTimeSignature> { new UTimeSignature() { beatPerBar = request.TimeSignatureNumerator, beatUnit = request.TimeSignatureDenominator } };
-                else {
-                    project.timeSignatures[0].beatPerBar = request.TimeSignatureNumerator;
-                    project.timeSignatures[0].beatUnit = request.TimeSignatureDenominator;
+                project.tracks.Clear();
+                project.parts.Clear();
+
+                if (request.BPM > 0)
+                {
+                    project.tempos.Clear();
+                    project.tempos.Add(new UTempo(0, request.BPM));
                 }
 
                 foreach (var trackDef in request.Tracks)
                 {
                     var track = new UTrack(project);
-                    if (trackDef.SingerId != null)
+                    if (trackDef.SingerId != null && SingerManager.Inst.Singers != null)
                         track.Singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == trackDef.SingerId);
                     
-                    var factory = DocManager.Inst.PhonemizerFactories.FirstOrDefault(f => f.name == trackDef.Phonemizer);
-                    if (factory != null)
-                    {
-                        track.Phonemizer = factory.Create();
+                    if (DocManager.Inst.PhonemizerFactories != null) {
+                        var factory = DocManager.Inst.PhonemizerFactories.FirstOrDefault(f => f.name == trackDef.Phonemizer);
+                        if (factory != null)
+                        {
+                            track.Phonemizer = factory.Create();
+                        }
                     }
 
                     if (trackDef.Renderer != null)
@@ -55,44 +57,49 @@ namespace OpenUtau.Api.Controllers
                         trackNo = project.tracks.Count - 1
                     };
 
-                    foreach (var noteDef in trackDef.Notes)
+                    if (trackDef.Notes != null)
                     {
-                        var note = project.CreateNote(noteDef.Tone, noteDef.Position, noteDef.Duration);
-                        if (noteDef.Lyric != null)
-                            note.lyric = noteDef.Lyric;
-
-                        if (noteDef.Vibrato != null)
+                        foreach (var noteDef in trackDef.Notes)
                         {
-                            note.vibrato.length = noteDef.Vibrato.Length;
-                            note.vibrato.period = noteDef.Vibrato.Period;
-                            note.vibrato.depth = noteDef.Vibrato.Depth;
-                            note.vibrato.@in = noteDef.Vibrato.In;
-                            note.vibrato.@out = noteDef.Vibrato.Out;
-                            note.vibrato.shift = noteDef.Vibrato.Shift;
-                            note.vibrato.drift = noteDef.Vibrato.Drift;
-                        }
+                            var note = project.CreateNote(noteDef.Tone, noteDef.Position, noteDef.Duration);
+                            if (noteDef.Lyric != null)
+                                note.lyric = noteDef.Lyric;
 
-                        if (noteDef.Pitch != null)
-                        {
-                            note.pitch.data.Clear();
-                            foreach(var ppt in noteDef.Pitch.Data)
+                            if (noteDef.Vibrato != null)
                             {
-                                note.pitch.data.Add(new PitchPoint(ppt.X, ppt.Y));
+                                note.vibrato.length = noteDef.Vibrato.Length;
+                                note.vibrato.period = noteDef.Vibrato.Period;
+                                note.vibrato.depth = noteDef.Vibrato.Depth;
+                                note.vibrato.@in = noteDef.Vibrato.In;
+                                note.vibrato.@out = noteDef.Vibrato.Out;
+                                note.vibrato.shift = noteDef.Vibrato.Shift;
+                                note.vibrato.drift = noteDef.Vibrato.Drift;
                             }
-                        }
 
-                        if (noteDef.Phonemes != null)
-                        {
-                            foreach(var pho in noteDef.Phonemes)
+                            if (noteDef.Pitch != null && noteDef.Pitch.Data != null)
                             {
-                                note.phonemeOverrides.Add(new UPhonemeOverride() { phoneme = pho.Phoneme });
+                                note.pitch.data.Clear();
+                                foreach(var ppt in noteDef.Pitch.Data)
+                                {
+                                    note.pitch.data.Add(new PitchPoint(ppt.X, ppt.Y));
+                                }
                             }
-                        }
 
-                        part.notes.Add(note);
+                            if (noteDef.Phonemes != null)
+                            {
+                                foreach(var pho in noteDef.Phonemes)
+                                {
+                                    note.phonemeOverrides.Add(new UPhonemeOverride() { phoneme = pho.Phoneme });
+                                }
+                            }
+
+                            part.notes.Add(note);
+                        }
                     }
                     project.parts.Add(part);
                 }
+
+                project.timeAxis.BuildSegments(project);
 
                 var tempFile = Path.GetTempFileName() + ".ustx";
                 Ustx.Save(tempFile, project);
@@ -101,7 +108,7 @@ namespace OpenUtau.Api.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = ex.Message });
+                return StatusCode(500, new { error = ex.Message, stack = ex.StackTrace });
             }
         }
     }
