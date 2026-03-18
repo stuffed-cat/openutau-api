@@ -67,7 +67,9 @@ namespace OpenUtau.Api.Controllers
             try
             {
                 var track = project.tracks[trackIndex];
+                DocManager.Inst.StartUndoGroup("api");
                 DocManager.Inst.ExecuteCmd(new RenameTrackCommand(project, track, name));
+                DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} renamed to {name}" });
             }
             catch (Exception ex)
@@ -86,7 +88,9 @@ namespace OpenUtau.Api.Controllers
             try
             {
                 var track = project.tracks[trackIndex];
+                DocManager.Inst.StartUndoGroup("api");
                 DocManager.Inst.ExecuteCmd(new ChangeTrackColorCommand(project, track, color));
+                DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} color set to {color}" });
             }
             catch (Exception ex)
@@ -109,7 +113,9 @@ namespace OpenUtau.Api.Controllers
 
                 var phonemizer = factory.Create();
                 var track = project.tracks[trackIndex];
+                DocManager.Inst.StartUndoGroup("api");
                 DocManager.Inst.ExecuteCmd(new TrackChangePhonemizerCommand(project, track, phonemizer));
+                DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} phonemizer set to {phonemizerName}" });
             }
             catch (Exception ex)
@@ -133,7 +139,9 @@ namespace OpenUtau.Api.Controllers
                     renderer = rendererId,
                     // Preserve other existing settings if needed?
                 };
+                DocManager.Inst.StartUndoGroup("api");
                 DocManager.Inst.ExecuteCmd(new TrackChangeRenderSettingCommand(project, track, newSettings));
+                DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} renderer set to {rendererId}" });
             }
             catch (Exception ex)
@@ -154,6 +162,7 @@ namespace OpenUtau.Api.Controllers
                 // This triggers the remapping on the specified track
                 // If trackIndex is -1 it checks all tracks
                 DocManager.Inst.ExecuteCmd(new VoiceColorRemappingNotification(trackIndex, validate));
+                DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Voice color remapping triggered for track {trackIndex}" });
             }
             catch (Exception ex)

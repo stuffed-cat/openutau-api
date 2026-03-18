@@ -208,7 +208,9 @@ namespace OpenUtau.Api.Controllers
             if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
             
             var part = project.parts[partIndex];
+            DocManager.Inst.StartUndoGroup("command.part.rename");
             DocManager.Inst.ExecuteCmd(new RenamePartCommand(project, part, name));
+            DocManager.Inst.EndUndoGroup();
             return Ok(new { message = $"Part renamed to {name}" });
         }
 
