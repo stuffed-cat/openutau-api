@@ -28,7 +28,7 @@ namespace OpenUtau.Api.Controllers
             if (splitTick <= part.position || splitTick >= part.End)
                 return BadRequest(new { error = "Split position must be within the part's duration" });
 
-            DocManager.Inst.StartUndoGroup("Split part");
+            DocManager.Inst.StartUndoGroup("Split part", true);
 
             // Move notes
             var notesToMove = voicePart.notes.Where(n => (part.position + n.position) >= splitTick).ToList();
@@ -97,7 +97,7 @@ namespace OpenUtau.Api.Controllers
             float oldVibFadeInTicks = oldVibFadeIn * oldVibLengthTicks / 100f;
             float oldVibFadeOutTicks = oldVibFadeOut * oldVibLengthTicks / 100f;
 
-            DocManager.Inst.StartUndoGroup("Split note");
+            DocManager.Inst.StartUndoGroup("Split note", true);
 
             int dur1 = tick - note.position;
             int dur2 = note.End - tick;
@@ -160,7 +160,7 @@ namespace OpenUtau.Api.Controllers
             var note1 = voicePart.notes.ElementAt(noteIndex);
             var note2 = voicePart.notes.ElementAt(noteIndex + 1);
 
-            DocManager.Inst.StartUndoGroup("Merge notes");
+            DocManager.Inst.StartUndoGroup("Merge notes", true);
 
             int newDuration = note2.End - note1.position;
 
@@ -197,7 +197,7 @@ namespace OpenUtau.Api.Controllers
             var voiceParts = partsToMerge.OrderBy(p => p.position).ToList();
             var firstPart = voiceParts.First();
             
-            DocManager.Inst.StartUndoGroup("Merge parts");
+            DocManager.Inst.StartUndoGroup("Merge parts", true);
 
             int newEnd = voiceParts.Max(p => p.End);
             int newDur = newEnd - firstPart.position;

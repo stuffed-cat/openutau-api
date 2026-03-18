@@ -67,7 +67,7 @@ namespace OpenUtau.Api.Controllers
             try
             {
                 var track = project.tracks[trackIndex];
-                DocManager.Inst.StartUndoGroup("api");
+                DocManager.Inst.StartUndoGroup("api", true);
                 DocManager.Inst.ExecuteCmd(new RenameTrackCommand(project, track, name));
                 DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} renamed to {name}" });
@@ -88,7 +88,7 @@ namespace OpenUtau.Api.Controllers
             try
             {
                 var track = project.tracks[trackIndex];
-                DocManager.Inst.StartUndoGroup("api");
+                DocManager.Inst.StartUndoGroup("api", true);
                 DocManager.Inst.ExecuteCmd(new ChangeTrackColorCommand(project, track, color));
                 DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} color set to {color}" });
@@ -112,7 +112,7 @@ namespace OpenUtau.Api.Controllers
                 if (singer == null) return BadRequest($"Singer '{singerName}' not found");
 
                 var track = project.tracks[trackIndex];
-                DocManager.Inst.StartUndoGroup("api");
+                DocManager.Inst.StartUndoGroup("api", true);
                 DocManager.Inst.ExecuteCmd(new TrackChangeSingerCommand(project, track, singer));
                 DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} singer set to {singer.Name}" });
@@ -137,7 +137,7 @@ namespace OpenUtau.Api.Controllers
 
                 var phonemizer = factory.Create();
                 var track = project.tracks[trackIndex];
-                DocManager.Inst.StartUndoGroup("api");
+                DocManager.Inst.StartUndoGroup("api", true);
                 DocManager.Inst.ExecuteCmd(new TrackChangePhonemizerCommand(project, track, phonemizer));
                 DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} phonemizer set to {phonemizerName}" });
@@ -163,7 +163,7 @@ namespace OpenUtau.Api.Controllers
                     renderer = rendererId,
                     // Preserve other existing settings if needed?
                 };
-                DocManager.Inst.StartUndoGroup("api");
+                DocManager.Inst.StartUndoGroup("api", true);
                 DocManager.Inst.ExecuteCmd(new TrackChangeRenderSettingCommand(project, track, newSettings));
                 DocManager.Inst.EndUndoGroup();
                 return Ok(new { message = $"Track {trackIndex} renderer set to {rendererId}" });

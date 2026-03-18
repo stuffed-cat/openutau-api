@@ -63,7 +63,7 @@ namespace OpenUtau.Api.Controllers
             if (request.NoteIndexes == null || request.NoteIndexes.Count == 0)
                 return BadRequest("No notes specified");
 
-            DocManager.Inst.StartUndoGroup();
+            DocManager.Inst.StartUndoGroup("api", true);
             int count = 0;
             foreach (var idx in request.NoteIndexes)
             {
@@ -125,7 +125,7 @@ namespace OpenUtau.Api.Controllers
                 }
             }
 
-            DocManager.Inst.StartUndoGroup();
+            DocManager.Inst.StartUndoGroup("api", true);
             DocManager.Inst.ExecuteCmd(new SetPitchPointsCommand(part, notesToChange, pitch));
             DocManager.Inst.EndUndoGroup();
 
@@ -154,7 +154,7 @@ namespace OpenUtau.Api.Controllers
             
             float?[] vals = request.Values?.ToArray() ?? new float?[] { null };
 
-            DocManager.Inst.StartUndoGroup();
+            DocManager.Inst.StartUndoGroup("api", true);
             int count = 0;
             foreach (var idx in request.NoteIndexes)
             {

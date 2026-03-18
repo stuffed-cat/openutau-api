@@ -17,7 +17,7 @@ namespace OpenUtau.Api.Controllers
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("Project not loaded.");
 
-            DocManager.Inst.StartUndoGroup("Set BPM");
+            DocManager.Inst.StartUndoGroup("Set BPM", true);
             DocManager.Inst.ExecuteCmd(new BpmCommand(project, bpm));
             DocManager.Inst.EndUndoGroup();
             return Ok(new { success = true, bpm });
@@ -31,7 +31,7 @@ namespace OpenUtau.Api.Controllers
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("Project not loaded.");
 
-            DocManager.Inst.StartUndoGroup("Add tempo");
+            DocManager.Inst.StartUndoGroup("Add tempo", true);
             DocManager.Inst.ExecuteCmd(new AddTempoChangeCommand(project, request.Position, request.Bpm));
             DocManager.Inst.EndUndoGroup();
             return Ok(new { success = true });
@@ -46,7 +46,7 @@ namespace OpenUtau.Api.Controllers
             var existing = project.tempos.FirstOrDefault(t => t.position == position);
             if (existing == null) return NotFound("Tempo change not found at this position.");
 
-            DocManager.Inst.StartUndoGroup("Edit tempo");
+            DocManager.Inst.StartUndoGroup("Edit tempo", true);
             DocManager.Inst.ExecuteCmd(new DelTempoChangeCommand(project, position));
             DocManager.Inst.ExecuteCmd(new AddTempoChangeCommand(project, position, request.Bpm));
             DocManager.Inst.EndUndoGroup();
@@ -62,7 +62,7 @@ namespace OpenUtau.Api.Controllers
             // Cannot delete the initial tempo (position 0)
             if (position == 0) return BadRequest("Cannot delete initial tempo change.");
 
-            DocManager.Inst.StartUndoGroup("Delete tempo");
+            DocManager.Inst.StartUndoGroup("Delete tempo", true);
             DocManager.Inst.ExecuteCmd(new DelTempoChangeCommand(project, position));
             DocManager.Inst.EndUndoGroup();
             return Ok(new { success = true });
@@ -76,7 +76,7 @@ namespace OpenUtau.Api.Controllers
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("Project not loaded.");
 
-            DocManager.Inst.StartUndoGroup("Add time signature");
+            DocManager.Inst.StartUndoGroup("Add time signature", true);
             DocManager.Inst.ExecuteCmd(new AddTimeSigCommand(project, request.BarPosition, request.BeatPerBar, request.BeatUnit));
             DocManager.Inst.EndUndoGroup();
             return Ok(new { success = true });
@@ -91,7 +91,7 @@ namespace OpenUtau.Api.Controllers
             var existing = project.timeSignatures.FirstOrDefault(ts => ts.barPosition == position);
             if (existing == null) return NotFound("Time signature not found at this position.");
 
-            DocManager.Inst.StartUndoGroup("Edit time signature");
+            DocManager.Inst.StartUndoGroup("Edit time signature", true);
             DocManager.Inst.ExecuteCmd(new DelTimeSigCommand(project, position));
             DocManager.Inst.ExecuteCmd(new AddTimeSigCommand(project, position, request.BeatPerBar, request.BeatUnit));
             DocManager.Inst.EndUndoGroup();
@@ -106,7 +106,7 @@ namespace OpenUtau.Api.Controllers
 
             if (position == 0) return BadRequest("Cannot delete initial time signature.");
 
-            DocManager.Inst.StartUndoGroup("Delete time signature");
+            DocManager.Inst.StartUndoGroup("Delete time signature", true);
             DocManager.Inst.ExecuteCmd(new DelTimeSigCommand(project, position));
             DocManager.Inst.EndUndoGroup();
             return Ok(new { success = true });

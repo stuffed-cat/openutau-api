@@ -51,7 +51,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.length");
+            DocManager.Inst.StartUndoGroup("vibrato.length", true);
             DocManager.Inst.ExecuteCmd(new VibratoLengthCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 
@@ -66,7 +66,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.fade-in");
+            DocManager.Inst.StartUndoGroup("vibrato.fade-in", true);
             DocManager.Inst.ExecuteCmd(new VibratoFadeInCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 
@@ -81,7 +81,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.fade-out");
+            DocManager.Inst.StartUndoGroup("vibrato.fade-out", true);
             DocManager.Inst.ExecuteCmd(new VibratoFadeOutCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 
@@ -96,7 +96,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.depth");
+            DocManager.Inst.StartUndoGroup("vibrato.depth", true);
             DocManager.Inst.ExecuteCmd(new VibratoDepthCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 
@@ -111,7 +111,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.period");
+            DocManager.Inst.StartUndoGroup("vibrato.period", true);
             DocManager.Inst.ExecuteCmd(new VibratoPeriodCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 
@@ -126,7 +126,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.shift");
+            DocManager.Inst.StartUndoGroup("vibrato.shift", true);
             DocManager.Inst.ExecuteCmd(new VibratoShiftCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 
@@ -141,7 +141,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.drift");
+            DocManager.Inst.StartUndoGroup("vibrato.drift", true);
             DocManager.Inst.ExecuteCmd(new VibratoDriftCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 
@@ -155,7 +155,7 @@ namespace OpenUtau.Api.Controllers
             var note = GetNote(part, noteIndex);
             if (note == null) return NotFound("Note not found");
 
-            DocManager.Inst.StartUndoGroup("vibrato.volLink");
+            DocManager.Inst.StartUndoGroup("vibrato.volLink", true);
             DocManager.Inst.ExecuteCmd(new VibratoVolumeLinkCommand(part, note, value));
             DocManager.Inst.EndUndoGroup();
 

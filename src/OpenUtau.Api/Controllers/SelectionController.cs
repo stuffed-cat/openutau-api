@@ -136,7 +136,7 @@ namespace OpenUtau.Api.Controllers
             var notes = SelectionManager.GetSelectedNotes(part);
             if (notes.Count == 0) return BadRequest("No notes selected");
 
-            DocManager.Inst.StartUndoGroup("Batch move notes");
+            DocManager.Inst.StartUndoGroup("Batch move notes", true);
             DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, notes, request.DeltaTick, request.DeltaTone));
             DocManager.Inst.EndUndoGroup();
 
@@ -153,7 +153,7 @@ namespace OpenUtau.Api.Controllers
             var notes = SelectionManager.GetSelectedNotes(part);
             if (notes.Count == 0) return BadRequest("No notes selected");
 
-            DocManager.Inst.StartUndoGroup("Batch resize notes");
+            DocManager.Inst.StartUndoGroup("Batch resize notes", true);
             DocManager.Inst.ExecuteCmd(new ResizeNoteCommand(part, notes, request.DeltaDuration));
             DocManager.Inst.EndUndoGroup();
 
@@ -175,7 +175,7 @@ namespace OpenUtau.Api.Controllers
             if (notes.Count == 0) return BadRequest("No notes to process");
 
             int count = 0;
-            DocManager.Inst.StartUndoGroup("Replace lyrics");
+            DocManager.Inst.StartUndoGroup("Replace lyrics", true);
             
             foreach (var note in notes)
             {
@@ -219,7 +219,7 @@ namespace OpenUtau.Api.Controllers
             var notes = SelectionManager.GetSelectedNotes(part);
             if (notes.Count == 0) return BadRequest("No notes selected");
 
-            DocManager.Inst.StartUndoGroup("Batch change lyrics");
+            DocManager.Inst.StartUndoGroup("Batch change lyrics", true);
             for (int i = 0; i < notes.Count; i++)
             {
                 var note = notes[i];

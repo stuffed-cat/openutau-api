@@ -24,7 +24,7 @@ namespace OpenUtau.Api.Controllers
 
             try
             {
-                DocManager.Inst.StartUndoGroup();
+                DocManager.Inst.StartUndoGroup("api", true);
                 
                 // Clone old time axis for remapping
                 var oldTimeAxis = project.timeAxis.Clone();
@@ -224,7 +224,7 @@ namespace OpenUtau.Api.Controllers
                 if (projects == null || projects.Length == 0) return BadRequest("Invalid project file");
                 var incomingProject = projects[0];
 
-                DocManager.Inst.StartUndoGroup();
+                DocManager.Inst.StartUndoGroup("api", true);
                 foreach (var track in incomingProject.tracks)
                 {
                     DocManager.Inst.ExecuteCmd(new AddTrackCommand(DocManager.Inst.Project, new UTrack(DocManager.Inst.Project)
@@ -553,7 +553,9 @@ namespace OpenUtau.Api.Controllers
                 
                 if (cmdObj is UCommand command)
                 {
+                    DocManager.Inst.StartUndoGroup($"API Session Execute {request.CommandType}", true);
                     DocManager.Inst.ExecuteCmd(command);
+                    DocManager.Inst.EndUndoGroup();
                     return Ok(new { message = $"Command {request.CommandType} executed successfully." });
                 }
                 

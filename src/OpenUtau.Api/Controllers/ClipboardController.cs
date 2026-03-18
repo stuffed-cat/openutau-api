@@ -99,7 +99,7 @@ public class PartIdentifier {
 
             DocManager.Inst.NotesClipboard = selectedNotes.Select(note => note.Clone()).ToList();
             
-            DocManager.Inst.StartUndoGroup("command.note.delete");
+            DocManager.Inst.StartUndoGroup("command.note.delete", true);
             DocManager.Inst.ExecuteCmd(new OpenUtau.Core.RemoveNoteCommand(part, selectedNotes));
             DocManager.Inst.EndUndoGroup();
 
@@ -125,7 +125,7 @@ public class PartIdentifier {
             int offset = request.PasteTick - minPosition - part.position;
             var notes = DocManager.Inst.NotesClipboard.Select(note => note.Clone()).ToList();
 
-            DocManager.Inst.StartUndoGroup("command.note.paste");
+            DocManager.Inst.StartUndoGroup("command.note.paste", true);
             foreach (var note in notes) {
                 note.position += offset;
                 DocManager.Inst.ExecuteCmd(new OpenUtau.Core.AddNoteCommand(part, note));
@@ -169,7 +169,7 @@ public class PartIdentifier {
 
             DocManager.Inst.PartsClipboard = selectedParts.Select(part => part.Clone()).ToList();
 
-            DocManager.Inst.StartUndoGroup("command.part.delete");
+            DocManager.Inst.StartUndoGroup("command.part.delete", true);
             foreach (var part in selectedParts) {
                 DocManager.Inst.ExecuteCmd(new OpenUtau.Core.RemovePartCommand(DocManager.Inst.Project, part));
             }
@@ -202,7 +202,7 @@ public class PartIdentifier {
                 part.trackNo = newTrackNo;
             }
 
-            DocManager.Inst.StartUndoGroup("command.part.paste");
+            DocManager.Inst.StartUndoGroup("command.part.paste", true);
 
             while (proj.tracks.Count <= newTrackNo) {
                 DocManager.Inst.ExecuteCmd(new OpenUtau.Core.AddTrackCommand(proj, new UTrack(proj) {
@@ -245,7 +245,7 @@ public class PartIdentifier {
                 return BadRequest("No valid notes specified to paste parameters to.");
             }
 
-            DocManager.Inst.StartUndoGroup("command.parameter.paste");
+            DocManager.Inst.StartUndoGroup("command.parameter.paste", true);
             var track = DocManager.Inst.Project.tracks[part.trackNo];
             
             int c = 0;

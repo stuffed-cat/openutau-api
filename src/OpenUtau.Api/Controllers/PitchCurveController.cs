@@ -67,7 +67,7 @@ namespace OpenUtau.Api.Controllers
                 idx = note.pitch.data.Count;
             }
 
-            DocManager.Inst.StartUndoGroup("Add pitch point");
+            DocManager.Inst.StartUndoGroup("Add pitch point", true);
             DocManager.Inst.ExecuteCmd(new AddPitchPointCommand(part, note, point, idx));
             DocManager.Inst.EndUndoGroup();
 
@@ -87,7 +87,7 @@ namespace OpenUtau.Api.Controllers
             var note = part.notes.ElementAt(noteIndex);
             if (pointIndex < 0 || pointIndex >= note.pitch.data.Count) return BadRequest("Invalid pointIndex");
 
-            DocManager.Inst.StartUndoGroup("Delete pitch point");
+            DocManager.Inst.StartUndoGroup("Delete pitch point", true);
             DocManager.Inst.ExecuteCmd(new DeletePitchPointCommand(part, note, pointIndex));
             DocManager.Inst.EndUndoGroup();
 
@@ -113,7 +113,7 @@ namespace OpenUtau.Api.Controllers
             var note = part.notes.ElementAt(noteIndex);
             if (pointIndex < 0 || pointIndex >= note.pitch.data.Count) return BadRequest("Invalid pointIndex");
 
-            DocManager.Inst.StartUndoGroup("Move pitch point");
+            DocManager.Inst.StartUndoGroup("Move pitch point", true);
             var pt = note.pitch.data[pointIndex];
             float deltaX = request.X - pt.X;
             float deltaY = request.Y - pt.Y;
@@ -135,7 +135,7 @@ namespace OpenUtau.Api.Controllers
 
             var note = part.notes.ElementAt(noteIndex);
 
-            DocManager.Inst.StartUndoGroup("Snap pitch point");
+            DocManager.Inst.StartUndoGroup("Snap pitch point", true);
             DocManager.Inst.ExecuteCmd(new SnapPitchPointCommand(part, note));
             DocManager.Inst.EndUndoGroup();
 
@@ -165,7 +165,7 @@ namespace OpenUtau.Api.Controllers
                 shapeEnum = parsed;
             }
 
-            DocManager.Inst.StartUndoGroup("Change pitch point shape");
+            DocManager.Inst.StartUndoGroup("Change pitch point shape", true);
             DocManager.Inst.ExecuteCmd(new ChangePitchPointShapeCommand(part, note.pitch.data[pointIndex], shapeEnum));
             DocManager.Inst.EndUndoGroup();
 
@@ -183,7 +183,7 @@ namespace OpenUtau.Api.Controllers
 
             // Execute LoadRenderedPitch batch edit on all notes in the part
             var loadEdit = new LoadRenderedPitch();
-            DocManager.Inst.StartUndoGroup("Load rendered pitch");
+            DocManager.Inst.StartUndoGroup("Load rendered pitch", true);
             loadEdit.Run(project, part, part.notes.ToList(), DocManager.Inst);
             DocManager.Inst.EndUndoGroup();
 

@@ -98,7 +98,7 @@ namespace OpenUtau.Api.Controllers
                 }
             }
 
-            DocManager.Inst.StartUndoGroup("api");
+            DocManager.Inst.StartUndoGroup("api", true);
             DocManager.Inst.ExecuteCmd(new MergedSetCurveCommand(project, part, abbr, oldXs, oldYs, request.xs, request.ys));
             DocManager.Inst.EndUndoGroup();
 
@@ -247,7 +247,7 @@ namespace OpenUtau.Api.Controllers
             if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
             
             var part = project.parts[partIndex];
-            DocManager.Inst.StartUndoGroup("command.part.rename");
+            DocManager.Inst.StartUndoGroup("command.part.rename", true);
             DocManager.Inst.ExecuteCmd(new RenamePartCommand(project, part, name));
             DocManager.Inst.EndUndoGroup();
             return Ok(new { message = $"Part renamed to {name}" });
@@ -280,7 +280,7 @@ namespace OpenUtau.Api.Controllers
                 };
                 newPart.Load(project);
 
-                DocManager.Inst.StartUndoGroup("command.import.audio");
+                DocManager.Inst.StartUndoGroup("command.import.audio", true);
                 DocManager.Inst.ExecuteCmd(new ReplacePartCommand(project, part, newPart));
                 DocManager.Inst.EndUndoGroup();
 
@@ -325,7 +325,7 @@ namespace OpenUtau.Api.Controllers
                     track.TrackNo = project.tracks.Count;
                     voicePart.trackNo = track.TrackNo;
                     
-                    DocManager.Inst.StartUndoGroup("command.part.transcribe");
+                    DocManager.Inst.StartUndoGroup("command.part.transcribe", true);
                     DocManager.Inst.ExecuteCmd(new AddTrackCommand(project, track));
                     DocManager.Inst.ExecuteCmd(new AddPartCommand(project, voicePart));
                     DocManager.Inst.EndUndoGroup();
@@ -419,7 +419,7 @@ namespace OpenUtau.Api.Controllers
                 };
                 mergedPart.Validate(options, project, project.tracks[trackNo]);
 
-                DocManager.Inst.StartUndoGroup("command.part.edit");
+                DocManager.Inst.StartUndoGroup("command.part.edit", true);
                 var partsToRemove = partsToMerge.OrderByDescending(p => project.parts.IndexOf(p)).ToList();
                 foreach (var pToRemove in partsToRemove)
                 {

@@ -154,6 +154,22 @@ namespace OpenUtau.Api.Controllers
             var part = project.parts.FirstOrDefault(p => p.name == request.PartName || project.parts.IndexOf(p) == request.PartIndex) as UVoicePart;
             if (part == null) return NotFound("Part not found.");
 
+            // Request the part to recalculate phonemes and Wait Finish
+            part.Validate(new ValidateOptions { SkipPhonemizer = false }, project, project.tracks[part.trackNo]);
+
+            var runnerProp = typeof(DocManager).GetProperty("PhonemizerRunner", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+            if (runnerProp != null)
+            {
+                var runner = runnerProp.GetValue(DocManager.Inst);
+                if (runner != null)
+                {
+                    var waitFinishMethod = runner.GetType().GetMethod("WaitFinish");
+                    waitFinishMethod?.Invoke(runner, null);
+                }
+            }
+
+            System.Threading.Thread.Sleep(200);
+
             var result = new List<object>();
             foreach (var note in part.notes)
             {
