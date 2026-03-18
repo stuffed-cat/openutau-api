@@ -23,10 +23,22 @@ namespace OpenUtau.Api.Tests
                 if (_initialized) return;
 
                 // Stop ExecuteCmd completely from calling PostOnUIThread for things it doesn't recognize
+                // Instead of a do-nothing stub, actually execute the action as if it's the UI thread dispatcher
                 DocManager.Inst.PostOnUIThread = action => 
                 {
-                    // Do literally nothing! Or execute directly.
-                    // Doing nothing stops the infinite loop.
+                    // Temporarily set the mainthread to current thread to avoid infinite loops
+                    var currentMainThread = field?.GetValue(DocManager.Inst) as Thread;
+                    field?.SetValue(DocManager.Inst, Thread.CurrentThread);
+                    try 
+                    {
+                        // Ensure action runs genuinely synchronously
+                        action();
+                    }
+                    finally 
+                    {
+                        // Restore
+                        field?.SetValue(DocManager.Inst, currentMainThread);
+                    }
                 };
 
                 // Set Log to prevent Serilog errors
