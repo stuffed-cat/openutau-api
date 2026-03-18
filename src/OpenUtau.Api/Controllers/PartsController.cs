@@ -18,6 +18,54 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/parts")]
     public class PartsController : ControllerBase
     {
+        [HttpGet("/api/project/part/{partNo}")]
+        public IActionResult GetPartProperties(int partNo) {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+            var part = project.parts[partNo];
+            if (part == null) return NotFound("Part not found");
+
+            if (part is UVoicePart voicePart) {
+                return Ok(new {
+                    partNo = partNo,
+                    trackNo = voicePart.trackNo,
+                    position = voicePart.position,
+                    duration = voicePart.Duration,
+                    name = voicePart.name,
+                    notes = voicePart.notes.Select((n, index) => new {
+                        noteIndex = index,
+                        position = n.position,
+                        duration = n.duration,
+                        lyric = n.lyric,
+                        tone = n.tone
+                    }).ToList(),
+                    curves = voicePart.curves.Select(c => new {
+                        abbr = c.abbr,
+                        name = c.descriptor?.name
+                    }).ToList()
+                });
+            } else if (part is UWavePart wavePart) {
+                return Ok(new {
+                    partNo = partNo,
+                    trackNo = wavePart.trackNo,
+                    position = wavePart.position,
+                    duration = wavePart.Duration,
+                    name = wavePart.name,
+                    filePath = wavePart.FilePath,
+                    fileDurationMs = wavePart.fileDurationMs
+                });
+            }
+
+            return Ok(new {
+                partNo = partNo,
+                trackNo = part.trackNo,
+                position = part.position,
+                name = part.name
+            });
+        }
+
         private IActionResult ExecuteEdit(IFormFile file, System.Action<UProject> action)
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");

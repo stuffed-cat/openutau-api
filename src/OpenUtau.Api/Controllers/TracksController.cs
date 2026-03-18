@@ -13,6 +13,27 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class TracksController : ControllerBase
     {
+        [HttpGet("/api/project/track/{trackNo}")]
+        public IActionResult GetTrackProperties(int trackNo) {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+
+            if (trackNo < 0 || trackNo >= project.tracks.Count) return BadRequest("Invalid track index");
+            var track = project.tracks[trackNo];
+
+            return Ok(new {
+                trackNo = track.TrackNo,
+                trackName = track.TrackName,
+                singer = track.Singer?.Id ?? track.singer,
+                phonemizer = track.Phonemizer?.GetType().Name ?? track.phonemizer,
+                rendererSettings = track.RendererSettings,
+                mute = track.Mute,
+                solo = track.Solo,
+                volume = track.Volume,
+                pan = track.Pan
+            });
+        }
+
         [HttpPost("{trackIndex}/rename")]
         public IActionResult RenameTrack(int trackIndex, [FromQuery] string name)
         {

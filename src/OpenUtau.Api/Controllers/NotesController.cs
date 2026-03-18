@@ -16,6 +16,56 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class NotesController : ControllerBase
     {
+        
+        
+        [HttpGet("{partNo}/{noteIndex}")]
+        public IActionResult GetNoteProperties(int partNo, int noteIndex)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project in session");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+            
+            var part = project.parts[partNo] as UVoicePart;
+            if (part == null) return BadRequest("Not a voice part");
+            if (noteIndex < 0 || noteIndex >= part.notes.Count) return BadRequest("Invalid note index");
+            
+            var note = part.notes.ElementAt(noteIndex);
+            
+            return Ok(new {
+                position = note.position,
+                duration = note.duration,
+                tone = note.tone,
+                lyric = note.lyric,
+                pitchPoints = note.pitch.data.Select(p => new { X = p.X, Y = p.Y, shape = p.shape.ToString() }),
+                vibrato = new {
+                    length = note.vibrato.length,
+                    fadeIn = note.vibrato.@in,
+                    fadeOut = note.vibrato.@out,
+                    depth = note.vibrato.depth,
+                    period = note.vibrato.period,
+                    shift = note.vibrato.shift,
+                    drift = note.vibrato.drift,
+                    volumeLink = note.vibrato.volLink
+                },
+                phonemeExpressions = note.phonemeExpressions.Select(e => new {
+                    index = e.index,
+                    abbr = e.abbr,
+                    value = e.value
+                }),
+                phonemeOverrides = note.phonemeOverrides.Select(o => new {
+                    index = o.index,
+                    phoneme = o.phoneme,
+                    offset = o.offset,
+                    preutterDelta = o.preutterDelta,
+                    overlapDelta = o.overlapDelta
+                }),
+                expressions = project.expressions.Values.ToDictionary(
+                    exp => exp.abbr,
+                    exp => note.phonemeExpressions.FirstOrDefault(e => e.abbr == exp.abbr)?.value ?? exp.min
+                )
+            });
+        }
+
         private IActionResult ExecuteEdit(IFormFile file, Action<UProject> modifier)
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
