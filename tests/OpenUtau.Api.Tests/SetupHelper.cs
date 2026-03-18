@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Threading;
 using OpenUtau.Core;
+using Serilog;
 using OpenUtau.Core.Ustx;
 
 namespace OpenUtau.Api.Tests
@@ -13,8 +14,14 @@ namespace OpenUtau.Api.Tests
             var field = typeof(DocManager).GetField("mainThread", BindingFlags.Instance | BindingFlags.NonPublic);
             field?.SetValue(DocManager.Inst, Thread.CurrentThread);
             
-            // Set Log to prevent Serilog errors just in case
-            Serilog.Log.Logger = new Serilog.LoggerConfiguration().CreateLogger();
+            // Provide a mock UI thread dispatcher in case it's still called
+            DocManager.Inst.PostOnUIThread = action => action();
+
+            // Set Log to prevent Serilog errors
+            if (Serilog.Log.Logger == null || Serilog.Log.Logger.GetType().Name == "SilentLogger")
+            {
+                Serilog.Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateLogger();
+            }
         }
 
         public static void SetProject(UProject project)

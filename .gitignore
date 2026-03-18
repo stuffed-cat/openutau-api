@@ -435,3 +435,5 @@ logs/
 *.mp3
 *.ustx
 dotnet-install.sh
+
+tests/OpenUtau.Api.Tests/CoverageReport
