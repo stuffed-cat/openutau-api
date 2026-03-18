@@ -8,6 +8,7 @@ using OpenUtau.Api.Controllers;
 
 namespace OpenUtau.Api.Tests
 {
+    [Collection("Sequential")]
     public class TrackPropertiesExtControllerTests : IDisposable
     {
         private TrackPropertiesExtController _controller;

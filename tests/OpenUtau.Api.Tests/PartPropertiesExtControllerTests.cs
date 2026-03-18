@@ -8,19 +8,22 @@ using OpenUtau.Api.Controllers;
 
 namespace OpenUtau.Api.Tests
 {
+    [Collection("Sequential")]
     public class PartPropertiesExtControllerTests : IDisposable
     {
         private PartPropertiesExtController _controller;
         
         public PartPropertiesExtControllerTests()
         {
+            SetupHelper.InitDocManager();
+
             _controller = new PartPropertiesExtController();
             
             // Initialize a real UProject
             var project = new UProject();
             
             // Set up a track
-            var track = new UTrack { TrackNo = 0 };
+            var track = new UTrack(project) { TrackNo = 0 };
             project.tracks.Add(track);
             
             // Set up a part
@@ -37,7 +40,6 @@ namespace OpenUtau.Api.Tests
             part.notes.Add(note3);
             part.notes.Add(note4);
 
-            SetupHelper.InitDocManager();
             SetupHelper.SetProject(project);
         }
 
@@ -105,7 +107,7 @@ namespace OpenUtau.Api.Tests
         {
             // Add another track and part
             var project = DocManager.Inst.Project;
-            var track2 = new UTrack { TrackNo = 1 };
+            var track2 = new UTrack(project) { TrackNo = 1 };
             project.tracks.Add(track2);
             
             var part2 = new UVoicePart { trackNo = 1, position = 0, Duration = 1920 };
