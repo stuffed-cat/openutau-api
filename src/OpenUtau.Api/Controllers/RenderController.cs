@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
@@ -18,6 +19,25 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class RenderController : ControllerBase
     {
+        private static readonly ConcurrentDictionary<Guid, CancellationTokenSource> _activeRenders = new ConcurrentDictionary<Guid, CancellationTokenSource>();
+
+        [HttpPost("cancel")]
+        public IActionResult CancelAllRenders()
+        {
+            int count = 0;
+            foreach (var kvp in _activeRenders)
+            {
+                try {
+                    if (!kvp.Value.IsCancellationRequested) {
+                        kvp.Value.Cancel();
+                        count++;
+                    }
+                } catch { }
+            }
+            _activeRenders.Clear();
+            return Ok(new { message = $"Cancelled {count} active render tasks." });
+        }
+
         [HttpPost("clear-cache")]
         public IActionResult ClearCache()
         {
@@ -101,9 +121,17 @@ namespace OpenUtau.Api.Controllers
                 // Create a mixdown with just this part by muting other tracks, or using RenderEngine with start/end
                 var engine = new RenderEngine(project, part.position, part.End, part.trackNo);
                 var tokenSource = new CancellationTokenSource();
+                var taskId = Guid.NewGuid();
+                _activeRenders.TryAdd(taskId, tokenSource);
                 
                 // Wait for the render to complete
-                var renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                Tuple<OpenUtau.Core.SignalChain.WaveMix, System.Collections.Generic.List<OpenUtau.Core.SignalChain.Fader>> renderResult;
+                try {
+                    renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                } finally {
+                    _activeRenders.TryRemove(taskId, out _);
+                    tokenSource.Dispose();
+                }
                 var mix = renderResult.Item1;
 
                 var outAudioTemp = Path.GetTempFileName() + ".wav";
@@ -167,8 +195,16 @@ namespace OpenUtau.Api.Controllers
 
                 var engine = new RenderEngine(project);
                 var tokenSource = new CancellationTokenSource();
+                var taskId = Guid.NewGuid();
+                _activeRenders.TryAdd(taskId, tokenSource);
                 
-                var renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                Tuple<OpenUtau.Core.SignalChain.WaveMix, System.Collections.Generic.List<OpenUtau.Core.SignalChain.Fader>> renderResult;
+                try {
+                    renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                } finally {
+                    _activeRenders.TryRemove(taskId, out _);
+                    tokenSource.Dispose();
+                }
                 var mix = renderResult.Item1;
 
                 var outAudioTemp = Path.GetTempFileName() + ".wav";
