@@ -40,6 +40,12 @@ namespace OpenUtau.Api.Controllers
                     case "fix-overlap":
                         edit = new FixOverlap();
                         break;
+                    case "load-rendered-pitch":
+                        edit = new LoadRenderedPitch();
+                        break;
+                    case "bake-pitch":
+                        edit = new BakePitch();
+                        break;
                     case "hanzi-to-pinyin":
                         edit = new HanziToPinyin();
                         break;
