@@ -15,6 +15,36 @@ namespace OpenUtau.Api.Tests
     [Collection("Sequential")]
     public class NotesControllerTests
     {
+
+        [Fact]
+        public void GetNoteProperties_WithPhoneticHint_ReturnsPhoneticHint()
+        {
+            // Arrange
+            var project = CreateTestProject(out var part);
+            var note = project.CreateNote(60, 0, 480);
+            note.lyric = "test[hint]";
+            part.notes.Add(note);
+            DocManager.Inst.ExecuteCmd(new LoadProjectNotification(project));
+
+            var controller = new NotesController();
+
+            // Act
+            var result = controller.GetNoteProperties(0, 0);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var resultValue = okResult.Value;
+            var json = JsonSerializer.Serialize(resultValue);
+            using var doc = JsonDocument.Parse(json);
+            
+            Assert.Equal("test", doc.RootElement.GetProperty("lyric").GetString());
+            Assert.Equal("hint", doc.RootElement.GetProperty("phoneticHint").GetString());
+        }
+
+
+
+
+
         public NotesControllerTests()
         {
             SetupHelper.InitDocManager();
@@ -136,6 +166,44 @@ namespace OpenUtau.Api.Tests
             Assert.Equal(500, note.position); 
             Assert.Equal(960, note.duration);
             Assert.Equal("updated", note.lyric);
+        }
+
+        [Fact]
+        public void UpdateNote_PhoneticHint_UpdatesNote()
+        {
+            var project = CreateTestProject(out UVoicePart _) ;
+            var controller = new NotesController();
+            var file = CreateProjectFile(project);
+
+            var result = controller.UpdateNote(
+                file, 
+                partIndex: 0, 
+                matchPosition: 480,
+                newPhoneticHint: "a"
+            );
+
+            var fileResult = Assert.IsType<FileStreamResult>(result);
+            
+            var newProject = Ustx.Load(((FileStream)fileResult.FileStream).Name);
+            var part = newProject.parts[0] as UVoicePart;
+            Assert.Single(part.notes);
+            var note = part.notes.ElementAt(0);
+            Assert.Contains("[a]", note.lyric);
+        }
+
+        [Fact]
+        public void GetNoteProperties_HasPhoneticHint_ReturnsIt()
+        {
+            var project = CreateTestProject(out UVoicePart part);
+            var note = part.notes.ElementAt(0);
+            note.lyric = "test[test_hint]";
+            
+            var controller = new NotesController();
+            var result = controller.GetNoteProperties(0, 0);
+
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var json = JsonSerializer.Serialize(okResult.Value);
+            Assert.Contains("test_hint", json);
         }
     }
 }

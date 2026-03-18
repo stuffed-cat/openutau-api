@@ -31,11 +31,20 @@ namespace OpenUtau.Api.Controllers
             
             var note = part.notes.ElementAt(noteIndex);
             
+            var phoneticHintPattern = new System.Text.RegularExpressions.Regex(@"\[(.*)\]");
+            string lrc = note.lyric;
+            string? phoneticHint = null;
+            lrc = phoneticHintPattern.Replace(lrc, match => {
+                phoneticHint = match.Groups[1].Value;
+                return "";
+            }).Trim();
+
             return Ok(new {
                 position = note.position,
                 duration = note.duration,
                 tone = note.tone,
-                lyric = note.lyric,
+                lyric = lrc,
+                phoneticHint = phoneticHint,
                 pitchPoints = note.pitch.data.Select(p => new { X = p.X, Y = p.Y, shape = p.shape.ToString() }),
                 vibrato = new {
                     length = note.vibrato.length,
@@ -170,6 +179,7 @@ namespace OpenUtau.Api.Controllers
             [FromQuery] int? newDuration = null,
             [FromQuery] int? newTone = null,
             [FromQuery] string? newLyric = null,
+            [FromQuery] string? newPhoneticHint = null,
             [FromQuery] string? vibratoJson = null,
             [FromQuery] string? expressionsJson = null) // e.g. {"dyn": 100, "clr": -20}
         {
@@ -192,7 +202,35 @@ namespace OpenUtau.Api.Controllers
 
                 if (newDuration.HasValue) note.duration = newDuration.Value;
                 if (newTone.HasValue) note.tone = newTone.Value;
-                if (!string.IsNullOrEmpty(newLyric)) note.lyric = newLyric;
+                
+                if (!string.IsNullOrEmpty(newLyric) || newPhoneticHint != null) 
+                {
+                    string currentLrc = note.lyric;
+                    var phoneticHintPattern = new System.Text.RegularExpressions.Regex(@"\[(.*)\]");
+                    string? existingHint = null;
+                    currentLrc = phoneticHintPattern.Replace(currentLrc, match => {
+                        existingHint = match.Groups[1].Value;
+                        return "";
+                    }).Trim();
+
+                    string targetLyric = !string.IsNullOrEmpty(newLyric) ? newLyric : currentLrc;
+                    
+                    // If empty string is passed to hint, clear it.
+                    if (newPhoneticHint != null) {
+                        if (string.IsNullOrWhiteSpace(newPhoneticHint)) {
+                            existingHint = null;
+                        } else {
+                            existingHint = newPhoneticHint;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(existingHint)) {
+                        note.lyric = $"{targetLyric}[{existingHint}]";
+                    } else {
+                        note.lyric = targetLyric;
+                    }
+                }
+
 
                 // Set/Modify Vibrato
                 if (!string.IsNullOrEmpty(vibratoJson))
