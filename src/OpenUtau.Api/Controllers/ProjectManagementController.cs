@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
 using OpenUtau.Core.Format;
 using OpenUtau.Core.Ustx;
+using OpenUtau.Core.Util;
 using System;
 using System.IO;
 using System.Linq;
@@ -14,6 +15,145 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/management")]
     public class ProjectManagementController : ControllerBase
     {
+        [HttpPost("/api/project/new")]
+        public IActionResult NewProject()
+        {
+            try
+            {
+                var project = new UProject();
+                Ustx.AddDefaultExpressions(project);
+                DocManager.Inst.ExecuteCmd(new LoadProjectNotification(project));
+                return Ok(new { message = "New project created in session" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("/api/project/savetemplate")]
+        public IActionResult SaveTemplate([FromQuery] string name)
+        {
+            if (string.IsNullOrEmpty(name)) return BadRequest("Template name required");
+            if (DocManager.Inst.Project == null) return BadRequest("No project in session");
+            try
+            {
+                var tempPath = PathManager.Inst.TemplatesPath;
+                if (!Directory.Exists(tempPath)) Directory.CreateDirectory(tempPath);
+                
+                var file = Path.Combine(tempPath, name + ".ustx");
+                Ustx.Save(file, DocManager.Inst.Project);
+                
+                return Ok(new { message = "Template saved", path = file });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("/api/project/locations/projectdir")]
+        public IActionResult GetProjectDir()
+        {
+            try
+            {
+                var p = DocManager.Inst.Project;
+                string dir = p != null && !string.IsNullOrEmpty(p.FilePath) 
+                    ? Path.GetDirectoryName(p.FilePath) 
+                    : PathManager.Inst.DataPath;
+                return Ok(new { projectDir = dir ?? "" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("/api/project/locations/exportdir")]
+        public IActionResult GetExportDir()
+        {
+            try
+            {
+                var p = DocManager.Inst.Project;
+                string dir = p != null && !string.IsNullOrEmpty(p.FilePath) 
+                    ? Path.GetDirectoryName(p.FilePath) 
+                    : PathManager.Inst.DataPath;
+                return Ok(new { exportDir = Path.Combine(dir ?? "", "Export") }); // Often export dir is a subdirectory or same dir
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("/api/project/importtracks")]
+        public IActionResult ImportTracks(IFormFile file)
+        {
+            if (file == null || file.Length == 0) return BadRequest("No file uploaded");
+            if (DocManager.Inst.Project == null) return BadRequest("No project in session");
+            try
+            {
+                var tempFile = Path.GetTempFileName();
+                using (var stream = new FileStream(tempFile, FileMode.Create)) { file.CopyTo(stream); }
+                var incomingProject = Ustx.Load(tempFile);
+                System.IO.File.Delete(tempFile);
+
+                if (incomingProject == null) return BadRequest("Invalid project file");
+
+                DocManager.Inst.StartUndoGroup();
+                foreach (var track in incomingProject.tracks)
+                {
+                    DocManager.Inst.ExecuteCmd(new AddTrackCommand(DocManager.Inst.Project, new UTrack(DocManager.Inst.Project)
+                    {
+                        TrackName = track.TrackName,
+                        Singer = track.Singer,
+                        Phonemizer = track.Phonemizer,
+                        RendererSettings = track.RendererSettings
+                    }));
+                    int newTrackNo = DocManager.Inst.Project.tracks.Count - 1;
+
+                    foreach (var part in incomingProject.parts.Where(p => p.trackNo == track.TrackNo))
+                    {
+                        if (part is UVoicePart vp)
+                        {
+                            var newPart = new UVoicePart()
+                            {
+                                name = vp.name,
+                                position = vp.position,
+                                trackNo = newTrackNo,
+                                Duration = vp.Duration
+                            };
+                            DocManager.Inst.ExecuteCmd(new AddPartCommand(DocManager.Inst.Project, newPart));
+                            foreach (var note in vp.notes)
+                            {
+                                var n = note.Clone();
+                                DocManager.Inst.ExecuteCmd(new AddNoteCommand(newPart, n));
+                            }
+                        }
+                        else if (part is UWavePart wp)
+                        {
+                            var newPart = new UWavePart()
+                            {
+                                name = wp.name,
+                                position = wp.position,
+                                trackNo = newTrackNo,
+                                FilePath = wp.FilePath
+                            };
+                            DocManager.Inst.ExecuteCmd(new AddPartCommand(DocManager.Inst.Project, newPart));
+                        }
+                    }
+                }
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { message = "Tracks imported successfully" });
+            }
+            catch (Exception ex)
+            {
+                if (DocManager.Inst.HasOpenUndoGroup) DocManager.Inst.EndUndoGroup(); // Safety
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         private IActionResult ExecuteEdit(IFormFile file, Action<UProject> modifier)
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
