@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
-
 using OpenUtau.Core.Editing;
 using System.Linq;
 using System.Collections.Generic;
@@ -12,7 +11,7 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project")]
     public class PitchCurveController : ControllerBase
     {
-        [HttpGet("notes/{partNo}/{noteIndex}/pitch/curve")]
+        [HttpGet("note/{partNo}/{noteIndex}/pitch/points")]
         public IActionResult GetPitchCurve(int partNo, int noteIndex)
         {
             var project = DocManager.Inst.Project;
@@ -45,7 +44,7 @@ namespace OpenUtau.Api.Controllers
             public string Shape { get; set; } = "io";
         }
 
-        [HttpPost("notes/{partNo}/{noteIndex}/pitch/points")]
+        [HttpPost("note/{partNo}/{noteIndex}/pitch/point/add")]
         public IActionResult AddPitchPoint(int partNo, int noteIndex, [FromBody] PitchPointRequest request, [FromQuery] int pointIndex = -1)
         {
             var project = DocManager.Inst.Project;
@@ -75,7 +74,7 @@ namespace OpenUtau.Api.Controllers
             return Ok(new { message = "Pitch point added", index = idx });
         }
 
-        [HttpDelete("notes/{partNo}/{noteIndex}/pitch/points/{pointIndex}")]
+        [HttpDelete("note/{partNo}/{noteIndex}/pitch/point/{pointIndex}")]
         public IActionResult DeletePitchPoint(int partNo, int noteIndex, int pointIndex)
         {
             var project = DocManager.Inst.Project;
@@ -95,7 +94,36 @@ namespace OpenUtau.Api.Controllers
             return Ok(new { message = "Pitch point deleted" });
         }
 
-        [HttpPost("notes/{partNo}/{noteIndex}/pitch/snap")]
+        public class MovePointRequest
+        {
+            public float X { get; set; }
+            public float Y { get; set; }
+        }
+
+        [HttpPost("note/{partNo}/{noteIndex}/pitch/point/{pointIndex}/move")]
+        public IActionResult MovePitchPoint(int partNo, int noteIndex, int pointIndex, [FromBody] MovePointRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
+
+            if (project.parts[partNo] is not UVoicePart part) return BadRequest("Not a voice part");
+            if (noteIndex < 0 || noteIndex >= part.notes.Count) return BadRequest("Invalid noteIndex");
+
+            var note = part.notes.ElementAt(noteIndex);
+            if (pointIndex < 0 || pointIndex >= note.pitch.data.Count) return BadRequest("Invalid pointIndex");
+
+            DocManager.Inst.StartUndoGroup("Move pitch point");
+            var pt = note.pitch.data[pointIndex];
+            float deltaX = request.X - pt.X;
+            float deltaY = request.Y - pt.Y;
+            DocManager.Inst.ExecuteCmd(new MovePitchPointCommand(part, pt, deltaX, deltaY));
+            DocManager.Inst.EndUndoGroup();
+
+            return Ok(new { message = "Pitch point moved" });
+        }
+
+        [HttpPost("note/{partNo}/{noteIndex}/pitch/snap")]
         public IActionResult SnapPitchPoint(int partNo, int noteIndex)
         {
             var project = DocManager.Inst.Project;
@@ -119,7 +147,7 @@ namespace OpenUtau.Api.Controllers
             public string Shape { get; set; } = "io";
         }
 
-        [HttpPost("notes/{partNo}/{noteIndex}/pitch/shape/{pointIndex}")]
+        [HttpPost("note/{partNo}/{noteIndex}/pitch/shape/{pointIndex}")]
         public IActionResult SetPitchShape(int partNo, int noteIndex, int pointIndex, [FromBody] ChangeShapeRequest request)
         {
             var project = DocManager.Inst.Project;
@@ -144,28 +172,7 @@ namespace OpenUtau.Api.Controllers
             return Ok(new { message = "Shape changed", pointIndex = pointIndex, shape = shapeEnum.ToString() });
         }
 
-        [HttpPost("notes/{partNo}/{noteIndex}/pitch/interpolate")]
-        public IActionResult InterpolatePitch(int partNo, int noteIndex)
-        {
-            var project = DocManager.Inst.Project;
-            if (project == null) return BadRequest("No project loaded");
-            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
-
-            if (project.parts[partNo] is not UVoicePart part) return BadRequest("Not a voice part");
-            if (noteIndex < 0 || noteIndex >= part.notes.Count) return BadRequest("Invalid noteIndex");
-
-            var note = part.notes.ElementAt(noteIndex);
-
-            // Execute BakePitch batch edit on this single note
-            var bakeEdit = new BakePitch();
-            DocManager.Inst.StartUndoGroup("Bake pitch");
-            bakeEdit.Run(project, part, new List<UNote> { note }, DocManager.Inst);
-            DocManager.Inst.EndUndoGroup();
-
-            return Ok(new { message = "Pitch interpolation (bake) completed" });
-        }
-
-        [HttpPost("parts/{partNo}/pitch/sync")]
+        [HttpPost("part/{partNo}/pitch/sync")]
         public IActionResult SyncPitch(int partNo)
         {
             var project = DocManager.Inst.Project;
