@@ -145,7 +145,7 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
-        [HttpPost("part/sync")]
+                [HttpPost("part/sync")]
         public IActionResult SyncPartPhonemes([FromBody] SyncPartPhonemesRequest request)
         {
             var project = DocManager.Inst.Project;
@@ -153,6 +153,51 @@ namespace OpenUtau.Api.Controllers
 
             var part = project.parts.FirstOrDefault(p => p.name == request.PartName || project.parts.IndexOf(p) == request.PartIndex) as UVoicePart;
             if (part == null) return NotFound("Part not found.");
+
+            var result = new List<object>();
+            foreach (var note in part.notes)
+            {
+                var notePhonemes = part.phonemes.Where(p => p.Parent == note).Select(p => new {
+                    NoteLyric = note.lyric,
+                    Phoneme = p.phoneme,
+                    Position = p.position,
+                    Error = p.Error ? true : false
+                });
+                result.AddRange(notePhonemes);
+            }
+
+            return Ok(new {
+                part = part.name,
+                phonemes = result
+            });
+        }
+
+        [HttpPost("part/recalculate")]
+        public IActionResult RecalculatePartPhonemes([FromBody] SyncPartPhonemesRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("Project not loaded.");
+
+            var part = project.parts.FirstOrDefault(p => p.name == request.PartName || project.parts.IndexOf(p) == request.PartIndex) as UVoicePart;
+            if (part == null) return NotFound("Part not found.");
+
+            // Request the part to recalculate phonemes
+            part.Validate(new ValidateOptions { SkipPhonemizer = false }, project, project.tracks[part.trackNo]);
+
+            // Synchronously wait for the PhonemizerRunner to clear the queue
+            var runnerProp = typeof(DocManager).GetProperty("PhonemizerRunner", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+            if (runnerProp != null)
+            {
+                var runner = runnerProp.GetValue(DocManager.Inst);
+                if (runner != null)
+                {
+                    var waitFinishMethod = runner.GetType().GetMethod("WaitFinish");
+                    waitFinishMethod?.Invoke(runner, null);
+                }
+            }
+
+            // Give the default scheduler a brief moment to process the response task
+            System.Threading.Thread.Sleep(200);
 
             var result = new List<object>();
             foreach (var note in part.notes)
