@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
+using OpenUtau.Core.Ustx;
+using System.IO.Compression;
 using OpenUtau.Core.Format;
 using System.IO;
 using System.Linq;
@@ -60,6 +62,78 @@ namespace OpenUtau.Api.Controllers
                 }
                 var streamRetExp = new FileStream(wavFile, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
                 return File(streamRetExp, OpenUtau.Api.AudioExporter.GetContentType(format), finalFileName);
+            }
+            catch (System.Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        
+        [HttpPost("tracks")]
+        public async Task<IActionResult> ExportTracks(IFormFile? file = null, [FromQuery] string format = "wav")
+        {
+            try
+            {
+                UProject project;
+                string tempFile = null;
+
+                if (file != null && file.Length > 0)
+                {
+                    tempFile = Path.GetTempFileName();
+                    using (var stream = new FileStream(tempFile, FileMode.Create))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+                    Formats.LoadProject(new string[] { tempFile });
+                    project = DocManager.Inst.Project;
+                }
+                else
+                {
+                    project = DocManager.Inst.Project;
+                }
+
+                if (project == null)
+                {
+                    if (tempFile != null) System.IO.File.Delete(tempFile);
+                    return BadRequest("No project loaded or uploaded.");
+                }
+
+                var tempDir = Path.Combine(Path.GetTempPath(), "tracks_export_" + pathHelper());
+                Directory.CreateDirectory(tempDir);
+                
+                var baseFile = Path.Combine(tempDir, "export.wav");
+                await PlaybackManager.Inst.RenderToFiles(project, baseFile);
+
+                if (tempFile != null) System.IO.File.Delete(tempFile);
+
+                var zipFilePath = Path.Combine(Path.GetTempPath(), "tracks_export_" + pathHelper() + ".zip");
+                
+                using (var zipStream = new FileStream(zipFilePath, FileMode.Create))
+                using (var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, true))
+                {
+                    foreach (var exportedFile in Directory.GetFiles(tempDir))
+                    {
+                        var finalFile = exportedFile;
+                        if (!string.IsNullOrEmpty(format) && format != "wav")
+                        {
+                            finalFile = OpenUtau.Api.AudioExporter.ConvertFormat(exportedFile, format);
+                        }
+                        
+                        var entryName = Path.GetFileName(finalFile);
+                        archive.CreateEntryFromFile(finalFile, entryName);
+                        
+                        // Clean up temp formats if we generated them
+                        if (finalFile != exportedFile) {
+                            System.IO.File.Delete(finalFile);
+                        }
+                    }
+                }
+                
+                Directory.Delete(tempDir, true);
+
+                var streamRetExp = new FileStream(zipFilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRetExp, "application/zip", "tracks.zip");
             }
             catch (System.Exception ex)
             {
