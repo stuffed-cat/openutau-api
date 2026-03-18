@@ -26,7 +26,17 @@ namespace OpenUtau.Api.Controllers {
             public List<PartIdentifier>? Parts { get; set; }
         }
 
-        public class PartIdentifier {
+        
+        public class PasteParametersRequest {
+            public int PartTrackNo { get; set; }
+            public int PartPosition { get; set; }
+            public List<int>? NoteIndexes { get; set; }
+            public bool PastePitch { get; set; }
+            public bool PasteVibrato { get; set; }
+            public List<string>? PasteExpressions { get; set; }
+        }
+
+public class PartIdentifier {
             public int TrackNo { get; set; }
             public int Position { get; set; }
         }
@@ -208,5 +218,64 @@ namespace OpenUtau.Api.Controllers {
 
             return Ok(new { message = "Parts pasted", count = parts.Count });
         }
-    }
+    
+        [HttpPost("paste-parameters")]
+        public IActionResult PasteParameters([FromBody] PasteParametersRequest request) {
+            if (DocManager.Inst.Project == null) return BadRequest("Project not loaded");
+            
+            var part = FindPart(request.PartTrackNo, request.PartPosition);
+            if (part == null) return NotFound("Voice part not found");
+
+            if (DocManager.Inst.NotesClipboard == null || DocManager.Inst.NotesClipboard.Count == 0) {
+                return BadRequest("Clipboard is empty");
+            }
+
+            if (request.NoteIndexes == null || !request.NoteIndexes.Any()) {
+                return BadRequest("No notes specified");
+            }
+
+            var notesToApply = new List<UNote>();
+            foreach (int index in request.NoteIndexes) {
+                if (index >= 0 && index < part.notes.Count) {
+                    notesToApply.Add(part.notes.ElementAt(index));
+                }
+            }
+
+            if (notesToApply.Count == 0) {
+                return BadRequest("No valid notes specified to paste parameters to.");
+            }
+
+            DocManager.Inst.StartUndoGroup("command.parameter.paste");
+            var track = DocManager.Inst.Project.tracks[part.trackNo];
+            
+            int c = 0;
+            foreach (var note in notesToApply) {
+                var copyNote = DocManager.Inst.NotesClipboard[c];
+
+                if (request.PastePitch) {
+                    DocManager.Inst.ExecuteCmd(new SetPitchPointsCommand(part, note, copyNote.pitch));
+                }
+                
+                if (request.PasteVibrato) {
+                    DocManager.Inst.ExecuteCmd(new SetVibratoCommand(part, note, copyNote.vibrato));
+                }
+
+                if (request.PasteExpressions != null) {
+                    foreach (var expr in request.PasteExpressions) {
+                        float?[] values = copyNote.GetExpressionNoteHas(DocManager.Inst.Project, track, expr);
+                        DocManager.Inst.ExecuteCmd(new SetNoteExpressionCommand(DocManager.Inst.Project, track, part, note, expr, values));
+                    }
+                }
+
+                c++;
+                if (c >= DocManager.Inst.NotesClipboard.Count) {
+                    c = 0;
+                }
+            }
+            
+            DocManager.Inst.EndUndoGroup();
+            return Ok(new { message = "Parameters pasted successfully" });
+        }
+
+}
 }
