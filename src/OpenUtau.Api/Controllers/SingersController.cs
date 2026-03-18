@@ -160,6 +160,39 @@ namespace OpenUtau.Api.Controllers
         }
 
         
+        [HttpGet("{id}/otos/sample")]
+        public IActionResult GetSingerOtoSample(string id, [FromQuery] string set = "", [FromQuery] string alias = "")
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            var oto = singer.Otos.FirstOrDefault(o => (string.IsNullOrEmpty(set) || o.Set == set) && o.Alias == alias);
+            if (oto == null)
+            {
+                return NotFound(new { error = "Oto not found" });
+            }
+
+            if (string.IsNullOrEmpty(oto.File) || !System.IO.File.Exists(oto.File))
+            {
+                return NotFound(new { error = "Audio file not found" });
+            }
+
+            string extension = System.IO.Path.GetExtension(oto.File)?.ToLowerInvariant() ?? "";
+            string mimeType = extension switch
+            {
+                ".wav" => "audio/wav",
+                ".mp3" => "audio/mpeg",
+                ".flac" => "audio/flac",
+                ".ogg" => "audio/ogg",
+                _ => "application/octet-stream",
+            };
+
+            return PhysicalFile(oto.File, mimeType);
+        }
+
         [HttpGet("{id}/dictionary")]
         public IActionResult GetSingerDictionary(string id)
         {
