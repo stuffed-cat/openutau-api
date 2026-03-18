@@ -185,12 +185,16 @@ namespace OpenUtau.Api.Controllers
             if (DocManager.Inst.Project == null) return BadRequest("No project in session");
             try
             {
-                var tempFile = Path.GetTempFileName();
+                var ext = Path.GetExtension(file.FileName);
+                if (string.IsNullOrEmpty(ext)) ext = ".ustx";
+                var tempFile = Path.Combine(Path.GetTempPath(), System.Guid.NewGuid().ToString() + ext);
                 using (var stream = new FileStream(tempFile, FileMode.Create)) { file.CopyTo(stream); }
-                var incomingProject = Ustx.Load(tempFile);
+                
+                var projects = Formats.ReadProjects(new string[] { tempFile });
                 System.IO.File.Delete(tempFile);
 
-                if (incomingProject == null) return BadRequest("Invalid project file");
+                if (projects == null || projects.Length == 0) return BadRequest("Invalid project file");
+                var incomingProject = projects[0];
 
                 DocManager.Inst.StartUndoGroup();
                 foreach (var track in incomingProject.tracks)
@@ -306,10 +310,15 @@ namespace OpenUtau.Api.Controllers
             if (projectFile == null || audioFile == null) return BadRequest("Need both projectFile and audioFile");
             try
             {
-                var tempFile = Path.GetTempFileName();
+                var ext = Path.GetExtension(projectFile.FileName);
+                if (string.IsNullOrEmpty(ext)) ext = ".ustx";
+                var tempFile = Path.Combine(Path.GetTempPath(), System.Guid.NewGuid().ToString() + ext);
                 using (var stream = new FileStream(tempFile, FileMode.Create)) { projectFile.CopyTo(stream); }
-                var project = Ustx.Load(tempFile);
+                
+                var projects = Formats.ReadProjects(new string[] { tempFile });
                 System.IO.File.Delete(tempFile);
+                if (projects == null || projects.Length == 0) return BadRequest("Invalid project file");
+                var project = projects[0];
 
                 var audioPath = Path.Combine(Path.GetTempPath(), audioFile.FileName);
                 using (var stream = new FileStream(audioPath, FileMode.Create)) { audioFile.CopyTo(stream); }
@@ -419,10 +428,12 @@ namespace OpenUtau.Api.Controllers
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
             try
             {
-                var tempFile = Path.GetTempFileName() + ".ustx";
+                var ext = Path.GetExtension(file.FileName);
+                if (string.IsNullOrEmpty(ext)) ext = ".ustx";
+                var tempFile = Path.Combine(Path.GetTempPath(), System.Guid.NewGuid().ToString() + ext);
                 using (var stream = new FileStream(tempFile, FileMode.Create)) { file.CopyTo(stream); }
                 
-                Console.WriteLine($"Parts count from load: {Ustx.Load(tempFile).parts.Count}"); Formats.LoadProject(new string[] { tempFile });
+                Formats.LoadProject(new string[] { tempFile });
                 System.IO.File.Delete(tempFile);
                 return Ok(new { message = "Project loaded into memory session." });
             }

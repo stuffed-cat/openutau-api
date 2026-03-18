@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
+using Classic;
+using OpenUtau.Classic;
 
 namespace OpenUtau.Api.Controllers
 {
@@ -11,7 +13,7 @@ namespace OpenUtau.Api.Controllers
     public class PackagesController : ControllerBase
     {
         [HttpPost("install")]
-        public async Task<IActionResult> InstallPackage(IFormFile? file)
+        public async Task<IActionResult> InstallPackage(IFormFile? file, [FromForm] string exeType = "")
         {
             if (file == null || file.Length == 0)
                 return BadRequest(new { error = "No file uploaded" });
@@ -41,9 +43,28 @@ namespace OpenUtau.Api.Controllers
                 else if (ext == ".zip" || ext == ".rar" || ext == ".uar")
                 {
                     var basePath = PathManager.Inst.SingersInstallPath;
-                    var installer = new OpenUtau.Classic.VoicebankInstaller(basePath, (progress, info) => { }, System.Text.Encoding.GetEncoding("shift_jis"), System.Text.Encoding.GetEncoding("shift_jis"));
+                    var installer = new VoicebankInstaller(basePath, (progress, info) => { }, System.Text.Encoding.GetEncoding("shift_jis"), System.Text.Encoding.GetEncoding("shift_jis"));
                     installer.Install(tempPath, "utau");
                     SingerManager.Inst.SearchAllSingers();
+                }
+                else if (ext == ".exe" || ext == ".sh" || string.IsNullOrEmpty(ext))
+                {
+                    if (exeType.ToLower() == "wavtool") 
+                    {
+                        ExeInstaller.Install(tempPath, ExeType.wavtool);
+                    } 
+                    else if (exeType.ToLower() == "resampler") 
+                    {
+                        ExeInstaller.Install(tempPath, ExeType.resampler);
+                    } 
+                    else 
+                    {
+                        if (System.IO.File.Exists(tempPath)) {
+                            System.IO.File.Delete(tempPath);
+                        }
+                        return BadRequest(new { error = "For executable tools (.exe/.sh/no extension), please specify 'exeType' form field as 'wavtool' or 'resampler'." });
+                    }
+                    ToolsManager.Inst.Initialize();
                 }
                 else
                 {
