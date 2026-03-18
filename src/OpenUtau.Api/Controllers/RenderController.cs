@@ -76,7 +76,7 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpPost("part")]
-        public async Task<IActionResult> RenderPart(IFormFile file, [FromQuery] int partIndex = 0, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1)
+        public async Task<IActionResult> RenderPart(IFormFile file, [FromQuery] int partIndex = 0, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1, [FromQuery] string format = "wav")
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
 
@@ -123,11 +123,9 @@ namespace OpenUtau.Api.Controllers
                 if (bitDepth == 16) {
                     waveProvider = sampleProvider.ToWaveProvider16();
                 } else if (bitDepth == 32) {
-                    waveProvider = sampleProvider.ToWaveProvider(); // 32-bit float
+                    waveProvider = sampleProvider.ToWaveProvider();
                 } else if (bitDepth == 24) {
-                    // NAudio trick for 24-bit if missing is sometimes complex, but let's just stick to 16 if not 32 for safety, or try SampleToWaveProvider24 if it exists? We can use new NAudio.Wave.SampleProviders.SampleToWaveProvider24(sampleProvider) ? Actually ToWaveProvider16 is an extension. Let's use ToWaveProvider16 for safety on unknown.
-                    // Wait, we can implement 24 bit if needed but 16 and 32 are easily available. Let's use 16 as fallback.
-                    waveProvider = sampleProvider.ToWaveProvider16();
+                    waveProvider = new OpenUtau.Api.SampleToWaveProvider24(sampleProvider);
                 } else {
                     waveProvider = sampleProvider.ToWaveProvider16();
                 }
@@ -135,8 +133,14 @@ namespace OpenUtau.Api.Controllers
                 NAudio.Wave.WaveFileWriter.CreateWaveFile(outAudioTemp, waveProvider);
                 System.IO.File.Delete(tempFile);
 
-                var streamRet = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
-                return File(streamRet, "audio/wav", $"part_{partIndex}.wav");
+                var finalFileName = $"part_{partIndex}.wav";
+                if (!string.IsNullOrEmpty(format) && format != "wav") {
+                    var ext = format.ToLowerInvariant().TrimStart('.');
+                    finalFileName = System.IO.Path.ChangeExtension(finalFileName, "." + ext);
+                }
+                outAudioTemp = OpenUtau.Api.AudioExporter.ConvertFormat(outAudioTemp, format);
+                var streamRetExp = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRetExp, OpenUtau.Api.AudioExporter.GetContentType(format), finalFileName);
             }
             catch (Exception ex)
             {
@@ -145,7 +149,7 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpPost("mixdown")]
-        public async Task<IActionResult> RenderMixdown(IFormFile file, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1)
+        public async Task<IActionResult> RenderMixdown(IFormFile file, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1, [FromQuery] string format = "wav")
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
 
@@ -184,11 +188,9 @@ namespace OpenUtau.Api.Controllers
                 if (bitDepth == 16) {
                     waveProvider = sampleProvider.ToWaveProvider16();
                 } else if (bitDepth == 32) {
-                    waveProvider = sampleProvider.ToWaveProvider(); // 32-bit float
+                    waveProvider = sampleProvider.ToWaveProvider();
                 } else if (bitDepth == 24) {
-                    // NAudio trick for 24-bit if missing is sometimes complex, but let's just stick to 16 if not 32 for safety, or try SampleToWaveProvider24 if it exists? We can use new NAudio.Wave.SampleProviders.SampleToWaveProvider24(sampleProvider) ? Actually ToWaveProvider16 is an extension. Let's use ToWaveProvider16 for safety on unknown.
-                    // Wait, we can implement 24 bit if needed but 16 and 32 are easily available. Let's use 16 as fallback.
-                    waveProvider = sampleProvider.ToWaveProvider16();
+                    waveProvider = new OpenUtau.Api.SampleToWaveProvider24(sampleProvider);
                 } else {
                     waveProvider = sampleProvider.ToWaveProvider16();
                 }
@@ -196,8 +198,14 @@ namespace OpenUtau.Api.Controllers
                 NAudio.Wave.WaveFileWriter.CreateWaveFile(outAudioTemp, waveProvider);
                 System.IO.File.Delete(tempFile);
 
-                var streamRet = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
-                return File(streamRet, "audio/wav", "mixdown.wav");
+                var finalFileName = "mixdown.wav";
+                if (!string.IsNullOrEmpty(format) && format != "wav") {
+                    var ext = format.ToLowerInvariant().TrimStart('.');
+                    finalFileName = System.IO.Path.ChangeExtension(finalFileName, "." + ext);
+                }
+                outAudioTemp = OpenUtau.Api.AudioExporter.ConvertFormat(outAudioTemp, format);
+                var streamRetExp = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRetExp, OpenUtau.Api.AudioExporter.GetContentType(format), finalFileName);
             }
             catch (Exception ex)
             {

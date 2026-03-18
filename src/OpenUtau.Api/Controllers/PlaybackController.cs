@@ -94,7 +94,7 @@ namespace OpenUtau.Api.Controllers
 
         // 5. Preview / Render a specific Part -> download WAV
         [HttpGet("preview/part/{trackNo}/{partIdx}")]
-        public IActionResult PreviewPart(int trackNo, int partIdx, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1)
+        public IActionResult PreviewPart(int trackNo, int partIdx, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1, [FromQuery] string format = "wav")
         {
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("No project loaded.");
@@ -125,14 +125,22 @@ namespace OpenUtau.Api.Controllers
                     waveProvider = sampleProvider.ToWaveProvider16();
                 } else if (bitDepth == 32) {
                     waveProvider = sampleProvider.ToWaveProvider();
+                } else if (bitDepth == 24) {
+                    waveProvider = new OpenUtau.Api.SampleToWaveProvider24(sampleProvider);
                 } else {
                     waveProvider = sampleProvider.ToWaveProvider16();
                 }
 
                 NAudio.Wave.WaveFileWriter.CreateWaveFile(tempFile, waveProvider);
 
+                tempFile = OpenUtau.Api.AudioExporter.ConvertFormat(tempFile, format);
+                var finalFileName = $"part_{trackNo}_{partIdx}.wav";
+                if (!string.IsNullOrEmpty(format) && format != "wav") {
+                    var ext = format.ToLowerInvariant().TrimStart('.');
+                    finalFileName = System.IO.Path.ChangeExtension(finalFileName, "." + ext);
+                }
                 var bytes = System.IO.File.ReadAllBytes(tempFile);
-                return File(bytes, "audio/wav", $"part_{trackNo}_{partIdx}.wav");
+                return File(bytes, OpenUtau.Api.AudioExporter.GetContentType(format), finalFileName);
             } catch (Exception e) {
                 return StatusCode(500, e.Message);
             } finally {

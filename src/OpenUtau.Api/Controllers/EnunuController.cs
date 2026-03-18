@@ -69,7 +69,7 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpPost("render/{partNo}")]
-        public async Task<IActionResult> RenderPart(int partNo, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1)
+        public async Task<IActionResult> RenderPart(int partNo, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1, [FromQuery] string format = "wav")
         {
             if (DocManager.Inst.Project == null)
             {
@@ -120,14 +120,22 @@ namespace OpenUtau.Api.Controllers
                     waveProvider = sampleProvider.ToWaveProvider16();
                 } else if (bitDepth == 32) {
                     waveProvider = sampleProvider.ToWaveProvider();
+                } else if (bitDepth == 24) {
+                    waveProvider = new OpenUtau.Api.SampleToWaveProvider24(sampleProvider);
                 } else {
                     waveProvider = sampleProvider.ToWaveProvider16();
                 }
 
                 NAudio.Wave.WaveFileWriter.CreateWaveFile(outAudioTemp, waveProvider);
 
-                var streamRet = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
-                return File(streamRet, "audio/wav", $"part_{partNo}_enunu.wav");
+                var finalFileName = $"part_{partNo}_enunu.wav";
+                if (!string.IsNullOrEmpty(format) && format != "wav") {
+                    var ext = format.ToLowerInvariant().TrimStart('.');
+                    finalFileName = System.IO.Path.ChangeExtension(finalFileName, "." + ext);
+                }
+                outAudioTemp = OpenUtau.Api.AudioExporter.ConvertFormat(outAudioTemp, format);
+                var streamRetExp = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRetExp, OpenUtau.Api.AudioExporter.GetContentType(format), finalFileName);
             }
             catch (System.Exception ex)
             {

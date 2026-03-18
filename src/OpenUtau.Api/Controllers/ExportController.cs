@@ -13,7 +13,7 @@ namespace OpenUtau.Api.Controllers
     public class ExportController : ControllerBase
     {
         [HttpPost("track")]
-        public async Task<IActionResult> ExportTrack(IFormFile file, [FromQuery] int trackIndex)
+        public async Task<IActionResult> ExportTrack(IFormFile file, [FromQuery] int trackIndex, [FromQuery] string format = "wav")
         {
             if (file == null || file.Length == 0)
                 return BadRequest("No file uploaded");
@@ -52,8 +52,14 @@ namespace OpenUtau.Api.Controllers
                 if (!System.IO.File.Exists(wavFile))
                     return StatusCode(500, "Failed to render wav.");
 
-                var streamRet = new FileStream(wavFile, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
-                return File(streamRet, "audio/wav", $"track_{trackIndex}.wav");
+                wavFile = OpenUtau.Api.AudioExporter.ConvertFormat(wavFile, format);
+                var finalFileName = $"track_{trackIndex}.wav";
+                if (!string.IsNullOrEmpty(format) && format != "wav") {
+                    var ext = format.ToLowerInvariant().TrimStart('.');
+                    finalFileName = System.IO.Path.ChangeExtension(finalFileName, "." + ext);
+                }
+                var streamRetExp = new FileStream(wavFile, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRetExp, OpenUtau.Api.AudioExporter.GetContentType(format), finalFileName);
             }
             catch (System.Exception ex)
             {

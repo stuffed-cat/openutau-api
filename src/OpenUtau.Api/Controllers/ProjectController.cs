@@ -12,7 +12,7 @@ namespace OpenUtau.Api.Controllers
     public class ProjectController : ControllerBase
     {
         [HttpPost("render")]
-        public async Task<IActionResult> RenderProject(IFormFile file)
+        public async Task<IActionResult> RenderProject(IFormFile file, [FromQuery] string format = "wav")
         {
             if (file == null || file.Length == 0)
                 return BadRequest("No ustx file provided");
@@ -40,13 +40,19 @@ namespace OpenUtau.Api.Controllers
                 }
                 
                 // Read and Return Audio
+                outputPath = OpenUtau.Api.AudioExporter.ConvertFormat(outputPath, format);
+                var finalFileName = "rendered.wav";
+                if (!string.IsNullOrEmpty(format) && format != "wav") {
+                    var ext = format.ToLowerInvariant().TrimStart('.');
+                    finalFileName = System.IO.Path.ChangeExtension(finalFileName, "." + ext);
+                }
                 var memoryStream = new MemoryStream(await System.IO.File.ReadAllBytesAsync(outputPath));
                 
                 // Cleanup temp files
                 System.IO.File.Delete(tempFilePath);
                 System.IO.File.Delete(outputPath);
                 
-                return File(memoryStream, "audio/wav", "rendered.wav");
+                return File(memoryStream, OpenUtau.Api.AudioExporter.GetContentType(format), finalFileName);
             }
             catch (System.Exception ex)
             {
