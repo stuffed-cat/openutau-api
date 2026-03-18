@@ -11,6 +11,26 @@ namespace OpenUtau.Api.Controllers
     [Route("api/[controller]")]
     public class SingersController : ControllerBase
     {
+        [HttpGet]
+        public IActionResult GetSingers()
+        {
+            var singers = SingerManager.Inst.Singers.Values.Select(singer => new {
+                Id = singer.Id,
+                Name = singer.Name,
+                Author = singer.Author,
+                Version = singer.Version,
+                SingerType = singer.SingerType.ToString(),
+                BasePath = singer.BasePath,
+                Subbanks = singer.Subbanks.Select(b => new {
+                    Name = b.Color,
+                    Prefix = b.Prefix,
+                    Suffix = b.Suffix,
+                    ToneSet = b.toneSet
+                })
+            });
+            return Ok(singers);
+        }
+
         [HttpGet("{id}/info")]
         public IActionResult GetSingerInfo(string id)
         {
