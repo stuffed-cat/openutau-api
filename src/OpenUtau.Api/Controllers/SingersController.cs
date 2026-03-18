@@ -159,6 +159,63 @@ namespace OpenUtau.Api.Controllers
             return Ok(otos);
         }
 
+        
+        [HttpGet("{id}/dictionary")]
+        public IActionResult GetSingerDictionary(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            var dictPath = Path.Combine(singer.Location, "dictionary.yaml");
+            if (!System.IO.File.Exists(dictPath))
+            {
+                return NotFound(new { error = "Dictionary not found" });
+            }
+
+            return Content(System.IO.File.ReadAllText(dictPath), "application/x-yaml");
+        }
+
+        public class DictionaryRequest
+        {
+            public string Content { get; set; } = string.Empty;
+        }
+
+        [HttpPost("{id}/dictionary")]
+        public IActionResult SaveSingerDictionary(string id, [FromBody] DictionaryRequest request)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            var dictPath = Path.Combine(singer.Location, "dictionary.yaml");
+            System.IO.File.WriteAllText(dictPath, request.Content);
+
+            return Ok(new { message = "Dictionary saved successfully" });
+        }
+
+        [HttpDelete("{id}/dictionary")]
+        public IActionResult DeleteSingerDictionary(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            var dictPath = Path.Combine(singer.Location, "dictionary.yaml");
+            if (System.IO.File.Exists(dictPath))
+            {
+                System.IO.File.Delete(dictPath);
+            }
+
+            return Ok(new { message = "Dictionary deleted successfully" });
+        }
+
         public class SingerEditRequest
         {
             public string? TextFileEncoding { get; set; }
