@@ -59,6 +59,32 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpGet("{id}/otos")]
+        public IActionResult GetSingerOtos(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            // Return a structured list of OTO entries
+            var otos = singer.Otos.Select(o => new {
+                Alias = o.Alias,
+                Phonetic = o.Phonetic,
+                Set = o.Set,
+                File = o.DisplayFile,
+                Color = o.Color,
+                Offset = o.Offset,
+                Consonant = o.Consonant,
+                Cutoff = o.Cutoff,
+                Preutter = o.Preutter,
+                Overlap = o.Overlap
+            });
+            
+            return Ok(otos);
+        }
+
         public class SingerEditRequest
         {
             public string? TextFileEncoding { get; set; }
