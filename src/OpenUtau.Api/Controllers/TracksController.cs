@@ -158,11 +158,8 @@ namespace OpenUtau.Api.Controllers
             try
             {
                 var track = project.tracks[trackIndex];
-                var newSettings = new URenderSettings
-                {
-                    renderer = rendererId,
-                    // Preserve other existing settings if needed?
-                };
+                var newSettings = track.RendererSettings.Clone();
+                newSettings.renderer = rendererId;
                 DocManager.Inst.StartUndoGroup("api", true);
                 DocManager.Inst.ExecuteCmd(new TrackChangeRenderSettingCommand(project, track, newSettings));
                 DocManager.Inst.EndUndoGroup();
@@ -174,6 +171,49 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+[HttpPost("{trackIndex}/setresampler")]
+        public IActionResult SetTrackResampler(int trackIndex, [FromQuery] string resamplerId)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+            try
+            {
+                var track = project.tracks[trackIndex];
+                var newSettings = track.RendererSettings.Clone();
+                newSettings.resampler = resamplerId;
+                DocManager.Inst.StartUndoGroup("api", true);
+                DocManager.Inst.ExecuteCmd(new TrackChangeRenderSettingCommand(project, track, newSettings));
+                DocManager.Inst.EndUndoGroup();
+                return Ok(new { message = $"Track {trackIndex} resampler set to {resamplerId}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{trackIndex}/setwavtool")]
+        public IActionResult SetTrackWavtool(int trackIndex, [FromQuery] string wavtoolId)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+            try
+            {
+                var track = project.tracks[trackIndex];
+                var newSettings = track.RendererSettings.Clone();
+                newSettings.wavtool = wavtoolId;
+                DocManager.Inst.StartUndoGroup("api", true);
+                DocManager.Inst.ExecuteCmd(new TrackChangeRenderSettingCommand(project, track, newSettings));
+                DocManager.Inst.EndUndoGroup();
+                return Ok(new { message = $"Track {trackIndex} wavtool set to {wavtoolId}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
         [HttpPost("{trackIndex}/voicecolormapping")]
         public IActionResult SetVoiceColorMapping(int trackIndex, [FromQuery] bool validate = true)
         {
@@ -286,7 +326,9 @@ namespace OpenUtau.Api.Controllers
             [FromQuery] bool? solo = null,
             [FromQuery] string? singerId = null,
             [FromQuery] string? phonemizer = null,
-            [FromQuery] string? renderer = null)
+            [FromQuery] string? renderer = null,
+            [FromQuery] string? resampler = null,
+            [FromQuery] string? wavtool = null)
         {
             return ExecuteEdit(file, project =>
             {
@@ -309,10 +351,9 @@ namespace OpenUtau.Api.Controllers
                     if (factory != null) track.Phonemizer = factory.Create();
                 }
                 
-                if (renderer != null)
-                {
-                    track.RendererSettings.renderer = renderer;
-                }
+                if (renderer != null) track.RendererSettings.renderer = renderer;
+                if (resampler != null) track.RendererSettings.resampler = resampler;
+                if (wavtool != null) track.RendererSettings.wavtool = wavtool;
             });
         }
     }
