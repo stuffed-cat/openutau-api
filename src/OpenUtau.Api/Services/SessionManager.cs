@@ -33,10 +33,8 @@ namespace OpenUtau.Api.Services
                     _sessions[sessionId] = new UserSession
                     {
                         SessionId = sessionId,
-                        Project = new UProject()
+                        Project = OpenUtau.Core.Format.Ustx.Create()
                     };
-                    // When creating a new project, we also need to build segments
-                    _sessions[sessionId].Project.tracks.Add(new UTrack(DocManager.Inst.Project)); // mock init if needed
                 }
 
                 // Inject into DocManager
@@ -50,7 +48,7 @@ namespace OpenUtau.Api.Services
             _sessions[id] = new UserSession
             {
                 SessionId = id,
-                Project = initialProject ?? new UProject()
+                Project = initialProject ?? OpenUtau.Core.Format.Ustx.Create()
             };
             return id;
         }
