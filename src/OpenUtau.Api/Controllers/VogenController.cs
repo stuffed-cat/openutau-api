@@ -1,4 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Threading.Tasks;
+using System.Threading;
+using System.IO;
+using OpenUtau.Core.Render;
+using OpenUtau.Core.SignalChain;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 using System.Linq;
@@ -46,7 +53,7 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpPost("render/{partNo}")]
-        public IActionResult RenderPart(int partNo)
+        public async Task<IActionResult> RenderPart(int partNo)
         {
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("No project loaded");
@@ -55,9 +62,24 @@ namespace OpenUtau.Api.Controllers
             var part = project.parts[partNo] as UVoicePart;
             if (part == null) return BadRequest("Not a voice part");
 
-            // Normally this would invoke the VogenRenderer logic.
-            // Placeholder for now as direct renderer invocation is complex via API
-            return Ok(new { message = $"Reder requested for part {partNo} via Vogen." });
+            try
+            {
+                var engine = new RenderEngine(project, part.position, part.End, part.trackNo);
+                var tokenSource = new CancellationTokenSource();
+                
+                var renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                var mix = renderResult.Item1;
+
+                var outAudioTemp = Path.GetTempFileName() + ".wav";
+                NAudio.Wave.WaveFileWriter.CreateWaveFile16(outAudioTemp, new ExportAdapter(mix).ToMono(1, 0));
+
+                var streamRet = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRet, "audio/wav", $"part_{partNo}_vogen.wav");
+            }
+            catch (System.Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message, stack = ex.StackTrace });
+            }
         }
     }
 }

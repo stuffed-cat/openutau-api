@@ -1,4 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Threading.Tasks;
+using System.Threading;
+using System.IO;
+using OpenUtau.Core.Render;
+using OpenUtau.Core.SignalChain;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using OpenUtau.Core;
 using OpenUtau.Core.Enunu;
 using OpenUtau.Core.Ustx;
@@ -62,7 +69,7 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpPost("render/{partNo}")]
-        public IActionResult RenderPart(int partNo)
+        public async Task<IActionResult> RenderPart(int partNo)
         {
             if (DocManager.Inst.Project == null)
             {
@@ -89,23 +96,24 @@ namespace OpenUtau.Api.Controllers
                 return BadRequest(new { error = "Track singer is not an Enunu model" });
             }
 
+            // Enunu models might be slow, so we definitely need async and task run
             try
             {
-                // Create a renderer matching the enunu rendering logic
-                var renderer = new EnunuRenderer();
+                var engine = new RenderEngine(project, part.position, part.End, part.trackNo);
+                var tokenSource = new CancellationTokenSource();
                 
-                // For a proper render via API, we would need to set up a RenderPhrase, 
-                // but for Enunu, it may be complex. Let's return the basic renderer instantiation info
-                // since Enunu rendering usually goes via PlaybackManager async
-                return Ok(new { 
-                    message = "Enunu render endpoint is partially implemented. Real rendering requires async pipeline.",
-                    renderer = renderer.GetType().Name,
-                    singer = singer.Name
-                });
+                var renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                var mix = renderResult.Item1;
+
+                var outAudioTemp = Path.GetTempFileName() + ".wav";
+                NAudio.Wave.WaveFileWriter.CreateWaveFile16(outAudioTemp, new ExportAdapter(mix).ToMono(1, 0));
+
+                var streamRet = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+                return File(streamRet, "audio/wav", $"part_{partNo}_enunu.wav");
             }
             catch (System.Exception ex)
             {
-                return StatusCode(500, new { error = ex.Message });
+                return StatusCode(500, new { error = ex.Message, stack = ex.StackTrace });
             }
         }
     }
