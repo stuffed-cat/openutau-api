@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Change directory to where the script is located
+cd "$(dirname "$0")"
+
 # Clear old coverage results
 rm -rf TestResults/ CoverageReport/
 
