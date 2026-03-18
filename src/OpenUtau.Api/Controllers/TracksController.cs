@@ -13,7 +13,7 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class TracksController : ControllerBase
     {
-        [HttpGet("/api/project/track/{trackNo}")]
+        [HttpGet("/api/project/track/{trackNo}/properties")]
         public IActionResult GetTrackProperties(int trackNo) {
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("No project loaded");
@@ -26,12 +26,34 @@ namespace OpenUtau.Api.Controllers
                 trackName = track.TrackName,
                 singer = track.Singer?.Id ?? track.singer,
                 phonemizer = track.Phonemizer?.GetType().Name ?? track.phonemizer,
+                renderer = track.RendererSettings?.renderer,
                 rendererSettings = track.RendererSettings,
                 mute = track.Mute,
                 solo = track.Solo,
                 volume = track.Volume,
-                pan = track.Pan
+                pan = track.Pan,
+                voiceColorNames = track.VoiceColorNames
             });
+        }
+
+        [HttpGet("/api/project/track/{trackNo}/expressions")]
+        public IActionResult GetTrackExpressions(int trackNo) {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+
+            if (trackNo < 0 || trackNo >= project.tracks.Count) return BadRequest("Invalid track index");
+            var track = project.tracks[trackNo];
+
+            return Ok(project.expressions.Values.Select(expr => new {
+                name = expr.name,
+                abbr = expr.abbr,
+                type = expr.type.ToString(),
+                min = expr.min,
+                max = expr.max,
+                defaultValue = expr.defaultValue,
+                isFlag = expr.isFlag,
+                flag = expr.flag
+            }).ToList());
         }
 
         [HttpPost("{trackIndex}/rename")]
