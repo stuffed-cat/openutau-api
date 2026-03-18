@@ -43,7 +43,9 @@ namespace OpenUtau.Api.Controllers
                     }).ToList(),
                     curves = voicePart.curves.Select(c => new {
                         abbr = c.abbr,
-                        name = c.descriptor?.name
+                        name = c.descriptor?.name,
+                        xs = c.xs,
+                        ys = c.ys
                     }).ToList()
                 });
             } else if (part is UWavePart wavePart) {

@@ -58,6 +58,12 @@ namespace OpenUtau.Api.Tests
             var val = okResult.Value;
             var nameProp = val.GetType().GetProperty("name");
             Assert.Equal("TestPart1", nameProp.GetValue(val));
+
+            var json = System.Text.Json.JsonSerializer.Serialize(val);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var curves = root.GetProperty("curves");
+            Assert.True(curves.ValueKind == System.Text.Json.JsonValueKind.Array);
         }
 
         [Fact]
