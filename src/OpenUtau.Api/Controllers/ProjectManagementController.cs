@@ -187,10 +187,10 @@ namespace OpenUtau.Api.Controllers
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
             try
             {
-                var tempFile = Path.GetTempFileName();
+                var tempFile = Path.GetTempFileName() + ".ustx";
                 using (var stream = new FileStream(tempFile, FileMode.Create)) { file.CopyTo(stream); }
                 
-                Formats.LoadProject(new string[] { tempFile });
+                Console.WriteLine($"Parts count from load: {Ustx.Load(tempFile).parts.Count}"); Formats.LoadProject(new string[] { tempFile });
                 System.IO.File.Delete(tempFile);
                 return Ok(new { message = "Project loaded into memory session." });
             }
