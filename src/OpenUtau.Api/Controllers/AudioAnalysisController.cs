@@ -252,7 +252,6 @@ namespace OpenUtau.Api.Controllers
             if (file == null || file.Length == 0) return BadRequest("No audio file uploaded.");
             var tempFile = SaveTempFile(file, ".wav");
 
-            // Simplified Mock Spectrogram structure for API responses 
             try
             {
                 using (var waveStream = Wave.OpenFile(tempFile))
@@ -261,25 +260,58 @@ namespace OpenUtau.Api.Controllers
                     if (sampleProvider.WaveFormat.Channels > 1) {
                         sampleProvider = new NAudio.Wave.SampleProviders.StereoToMonoSampleProvider(sampleProvider);
                     }
+                    int sampleRate = sampleProvider.WaveFormat.SampleRate;
                     var signal = Wave.GetSignal(sampleProvider);
                     
-                    // Implementing an FFT here using OpenUtau Core or basic windowing 
-                    // This returns mock parameters since standard math FFT involves larger dependencies
-                    // Often handled by NWaves or similar in actual audio APIs.
-                    
-                    var framesCount = signal.Length / hopSize;
+                    var framesCount = (signal.Length - fftSize) / hopSize + 1;
+                    if (framesCount < 0) framesCount = 0;
                     var binCount = fftSize / 2;
+
+                    double[][] amplitudes = new double[framesCount][];
+                    for (int i = 0; i < framesCount; i++)
+                    {
+                        amplitudes[i] = new double[binCount];
+                    }
+
+                    int m = (int)Math.Log(fftSize, 2.0);
+                    
+                    for (int f = 0; f < framesCount; f++)
+                    {
+                        int start = f * hopSize;
+                        NAudio.Dsp.Complex[] complexData = new NAudio.Dsp.Complex[fftSize];
+                        for (int i = 0; i < fftSize; i++)
+                        {
+                            double window = 0.5 * (1 - Math.Cos(2 * Math.PI * i / (fftSize - 1))); // Hann window
+                            complexData[i].X = (float)(signal[start + i] * window);
+                            complexData[i].Y = 0;
+                        }
+                        
+                        NAudio.Dsp.FastFourierTransform.FFT(true, m, complexData);
+
+                        for (int i = 0; i < binCount; i++)
+                        {
+                            double magnitude = Math.Sqrt(complexData[i].X * complexData[i].X + complexData[i].Y * complexData[i].Y);
+                            // Amplitude to dB (magnitude)
+                            double magDb = 20 * Math.Log10(magnitude + 1e-10); // avoid log(0)
+                            amplitudes[f][i] = magDb;
+                        }
+                    }
+
+                    double[] frequencies = new double[binCount];
+                    for (int i = 0; i < binCount; i++)
+                    {
+                        frequencies[i] = (double)i * sampleRate / fftSize;
+                    }
 
                     System.IO.File.Delete(tempFile);
                     return Ok(new { 
                         frames = framesCount,
                         bins = binCount,
-                        frequencies = new double[binCount], // Sample Data
-                        amplitudes = new double[framesCount][], // Array of arrays with size `binCount`
+                        frequencies = frequencies,
+                        amplitudes = amplitudes,
                         fftSize = fftSize,
                         hopSize = hopSize,
-                        sampleRate = sampleProvider.WaveFormat.SampleRate
-                        // Note: To make this real, wrap NAudio FastFourierTransform (which requires Complex[] arrays).
+                        sampleRate = sampleRate
                     });
                 }
             }
