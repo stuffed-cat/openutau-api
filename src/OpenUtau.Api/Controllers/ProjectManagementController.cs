@@ -15,6 +15,98 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/management")]
     public class ProjectManagementController : ControllerBase
     {
+        [HttpPost("/api/project/remaptimeaxis")]
+        public IActionResult RemapTimeAxis([FromQuery] double bpm)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project in session");
+            if (bpm <= 0) return BadRequest("BPM must be greater than 0");
+
+            try
+            {
+                DocManager.Inst.StartUndoGroup();
+                
+                // Clone old time axis for remapping
+                var oldTimeAxis = project.timeAxis.Clone();
+                
+                // Keep the first tempo (index 0) and change its BPM, remove others
+                DocManager.Inst.ExecuteCmd(new BpmCommand(project, bpm));
+                
+                // Optionally clear other tempos if they exist
+                foreach (var tempo in project.tempos.Skip(1))
+                {
+                    DocManager.Inst.ExecuteCmd(new DelTempoChangeCommand(project, tempo.position));
+                }
+
+                // Execute remap using new time axis logic similar to MainWindowViewModel
+                var newTimeAxis = project.timeAxis.Clone();
+                
+                int RemapTickPos(int tickPos, TimeAxis oldAxis, TimeAxis newAxis)
+                {
+                    double msPos = oldAxis.TickPosToMsPos(tickPos);
+                    return newAxis.MsPosToTickPos(msPos);
+                }
+
+                foreach (var part in project.parts)
+                {
+                    var partOldStartTick = part.position;
+                    var partNewStartTick = RemapTickPos(part.position, oldTimeAxis, newTimeAxis);
+                    if (partNewStartTick != partOldStartTick)
+                    {
+                        DocManager.Inst.ExecuteCmd(new MovePartCommand(project, part, partNewStartTick, part.trackNo));
+                    }
+
+                    if (part is UVoicePart voicePart)
+                    {
+                        var partOldDuration = voicePart.Duration;
+                        var partNewDuration = RemapTickPos(partOldStartTick + voicePart.duration, oldTimeAxis, newTimeAxis) - partNewStartTick;
+                        if (partNewDuration != partOldDuration)
+                        {
+                            DocManager.Inst.ExecuteCmd(new ResizePartCommand(project, voicePart, partNewDuration - partOldDuration, false));
+                        }
+
+                        var noteCommands = new List<UCommand>();
+                        foreach (var note in voicePart.notes)
+                        {
+                            var noteOldStartTick = note.position + partOldStartTick;
+                            var noteOldEndTick = note.End + partOldStartTick;
+                            var noteOldDuration = note.duration;
+                            
+                            var noteNewStartTick = RemapTickPos(noteOldStartTick, oldTimeAxis, newTimeAxis);
+                            var noteNewEndTick = RemapTickPos(noteOldEndTick, oldTimeAxis, newTimeAxis);
+                            var deltaPosTickInPart = (noteNewStartTick - partNewStartTick) - (noteOldStartTick - partOldStartTick);
+                            
+                            if (deltaPosTickInPart != 0)
+                            {
+                                noteCommands.Add(new MoveNoteCommand(voicePart, note, deltaPosTickInPart, 0));
+                            }
+                            
+                            var noteNewDuration = noteNewEndTick - noteNewStartTick;
+                            var deltaDur = noteNewDuration - noteOldDuration;
+                            
+                            if (deltaDur != 0)
+                            {
+                                noteCommands.Add(new ResizeNoteCommand(voicePart, note, deltaDur));
+                            }
+                        }
+                        
+                        foreach (var command in noteCommands)
+                        {
+                            DocManager.Inst.ExecuteCmd(command);
+                        }
+                    }
+                }
+
+                DocManager.Inst.EndUndoGroup();
+                return Ok(new { message = "Time axis remapped successfully" });
+            }
+            catch (Exception ex)
+            {
+                if (DocManager.Inst.HasOpenUndoGroup) DocManager.Inst.EndUndoGroup();
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpPost("/api/project/new")]
         public IActionResult NewProject()
         {
