@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
-using OpenUtau.Core.Commands;
 
 namespace OpenUtau.Api.Controllers
 {

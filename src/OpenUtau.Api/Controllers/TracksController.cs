@@ -13,6 +13,112 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class TracksController : ControllerBase
     {
+        [HttpPost("{trackIndex}/rename")]
+        public IActionResult RenameTrack(int trackIndex, [FromQuery] string name)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+            if (string.IsNullOrEmpty(name)) return BadRequest("Name cannot be empty");
+
+            try
+            {
+                var track = project.tracks[trackIndex];
+                DocManager.Inst.ExecuteCmd(new RenameTrackCommand(project, track, name));
+                return Ok(new { message = $"Track {trackIndex} renamed to {name}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{trackIndex}/setcolor")]
+        public IActionResult SetTrackColor(int trackIndex, [FromQuery] string color)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+
+            try
+            {
+                var track = project.tracks[trackIndex];
+                DocManager.Inst.ExecuteCmd(new ChangeTrackColorCommand(project, track, color));
+                return Ok(new { message = $"Track {trackIndex} color set to {color}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{trackIndex}/setphonmizer")]
+        public IActionResult SetTrackPhonemizer(int trackIndex, [FromQuery] string phonemizerName)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+
+            try
+            {
+                var factory = DocManager.Inst.PhonemizerFactories.FirstOrDefault(f => f.name == phonemizerName);
+                if (factory == null) return BadRequest($"Phonemizer '{phonemizerName}' not found");
+
+                var phonemizer = factory.Create();
+                var track = project.tracks[trackIndex];
+                DocManager.Inst.ExecuteCmd(new TrackChangePhonemizerCommand(project, track, phonemizer));
+                return Ok(new { message = $"Track {trackIndex} phonemizer set to {phonemizerName}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{trackIndex}/setrenderer")]
+        public IActionResult SetTrackRenderer(int trackIndex, [FromQuery] string rendererId)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+
+            try
+            {
+                var track = project.tracks[trackIndex];
+                var newSettings = new URenderSettings
+                {
+                    renderer = rendererId,
+                    // Preserve other existing settings if needed?
+                };
+                DocManager.Inst.ExecuteCmd(new TrackChangeRenderSettingCommand(project, track, newSettings));
+                return Ok(new { message = $"Track {trackIndex} renderer set to {rendererId}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{trackIndex}/voicecolormapping")]
+        public IActionResult SetVoiceColorMapping(int trackIndex, [FromQuery] bool validate = true)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex != -1 && (trackIndex < 0 || trackIndex >= project.tracks.Count)) return NotFound("Track not found");
+
+            try
+            {
+                // This triggers the remapping on the specified track
+                // If trackIndex is -1 it checks all tracks
+                DocManager.Inst.ExecuteCmd(new VoiceColorRemappingNotification(trackIndex, validate));
+                return Ok(new { message = $"Voice color remapping triggered for track {trackIndex}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         private IActionResult ExecuteEdit(IFormFile file, Action<UProject> modifier)
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
