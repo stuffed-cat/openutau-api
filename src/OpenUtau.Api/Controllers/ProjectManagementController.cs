@@ -144,6 +144,34 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpPost("/api/project/loadtemplate")]
+        public IActionResult LoadTemplate([FromQuery] string name)
+        {
+            if (string.IsNullOrEmpty(name)) return BadRequest(new { error = "Template name required" });
+            
+            try
+            {
+                var tempPath = PathManager.Inst.TemplatesPath;
+                var file = Path.Combine(tempPath, name + ".ustx");
+                if (!System.IO.File.Exists(file)) return NotFound(new { error = $"Template {name} not found" });
+
+                var project = Ustx.Load(file);
+                if (project == null) return StatusCode(500, new { error = "Failed to load project from template" });
+                
+                // Prevent accidental overwrite of the template
+                project.FilePath = null;
+                project.Saved = false;
+
+                DocManager.Inst.ExecuteCmd(new LoadProjectNotification(project));
+                
+                return Ok(new { message = $"Template {name} loaded into session" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpGet("/api/project/locations/projectdir")]
         public IActionResult GetProjectDir()
         {
