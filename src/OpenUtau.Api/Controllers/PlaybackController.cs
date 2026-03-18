@@ -94,7 +94,7 @@ namespace OpenUtau.Api.Controllers
 
         // 5. Preview / Render a specific Part -> download WAV
         [HttpGet("preview/part/{trackNo}/{partIdx}")]
-        public IActionResult PreviewPart(int trackNo, int partIdx)
+        public IActionResult PreviewPart(int trackNo, int partIdx, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1)
         {
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("No project loaded.");
@@ -111,7 +111,25 @@ namespace OpenUtau.Api.Controllers
                 RenderEngine engine = new RenderEngine(project, startTick: part.position, endTick: part.End, trackNo: trackNo);
                 var projectMix = engine.RenderMixdown(DocManager.Inst.MainScheduler, ref renderCancellation, wait: true).Item1;
                 
-                WaveFileWriter.CreateWaveFile16(tempFile, new ExportAdapter(projectMix).ToMono(1, 0));
+                ISampleProvider sampleProvider = new OpenUtau.Core.SignalChain.ExportAdapter(projectMix);
+                if (channels == 1) {
+                    sampleProvider = sampleProvider.ToMono(1, 0);
+                }
+                
+                if (sampleRate != 44100) {
+                    sampleProvider = new NAudio.Wave.SampleProviders.WdlResamplingSampleProvider(sampleProvider, sampleRate);
+                }
+
+                IWaveProvider waveProvider;
+                if (bitDepth == 16) {
+                    waveProvider = sampleProvider.ToWaveProvider16();
+                } else if (bitDepth == 32) {
+                    waveProvider = sampleProvider.ToWaveProvider();
+                } else {
+                    waveProvider = sampleProvider.ToWaveProvider16();
+                }
+
+                NAudio.Wave.WaveFileWriter.CreateWaveFile(tempFile, waveProvider);
 
                 var bytes = System.IO.File.ReadAllBytes(tempFile);
                 return File(bytes, "audio/wav", $"part_{trackNo}_{partIdx}.wav");

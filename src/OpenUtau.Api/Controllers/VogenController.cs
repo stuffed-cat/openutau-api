@@ -53,7 +53,7 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpPost("render/{partNo}")]
-        public async Task<IActionResult> RenderPart(int partNo)
+        public async Task<IActionResult> RenderPart(int partNo, [FromQuery] int sampleRate = 44100, [FromQuery] int bitDepth = 16, [FromQuery] int channels = 1)
         {
             var project = DocManager.Inst.Project;
             if (project == null) return BadRequest("No project loaded");
@@ -71,7 +71,25 @@ namespace OpenUtau.Api.Controllers
                 var mix = renderResult.Item1;
 
                 var outAudioTemp = Path.GetTempFileName() + ".wav";
-                NAudio.Wave.WaveFileWriter.CreateWaveFile16(outAudioTemp, new ExportAdapter(mix).ToMono(1, 0));
+                NAudio.Wave.ISampleProvider sampleProvider = new OpenUtau.Core.SignalChain.ExportAdapter(mix);
+                if (channels == 1) {
+                    sampleProvider = sampleProvider.ToMono(1, 0);
+                }
+                
+                if (sampleRate != 44100) {
+                    sampleProvider = new NAudio.Wave.SampleProviders.WdlResamplingSampleProvider(sampleProvider, sampleRate);
+                }
+
+                IWaveProvider waveProvider;
+                if (bitDepth == 16) {
+                    waveProvider = sampleProvider.ToWaveProvider16();
+                } else if (bitDepth == 32) {
+                    waveProvider = sampleProvider.ToWaveProvider();
+                } else {
+                    waveProvider = sampleProvider.ToWaveProvider16();
+                }
+
+                NAudio.Wave.WaveFileWriter.CreateWaveFile(outAudioTemp, waveProvider);
 
                 var streamRet = new FileStream(outAudioTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
                 return File(streamRet, "audio/wav", $"part_{partNo}_vogen.wav");
