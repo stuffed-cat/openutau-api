@@ -39,5 +39,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseMiddleware<OpenUtau.Api.Middlewares.SessionMiddleware>();
+
 app.MapControllers();
 app.Run();
