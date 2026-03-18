@@ -38,21 +38,25 @@ namespace OpenUtau.Api.Controllers
             return Ok(wavtools);
         }
     
-        private readonly List<Type> g2ps = new List<Type>() {
-            typeof(ArpabetG2p),
-            typeof(ArpabetPlusG2p),
-            typeof(FrenchG2p),
-            typeof(FrenchMillefeuilleG2p),
-            typeof(GermanG2p),
-            typeof(GermanMarzipanG2p),
-            typeof(ItalianG2p),
-            typeof(PortugueseG2p),
-            typeof(RussianG2p),
-            typeof(SpanishG2p),
-            typeof(KoreanG2p),
-            typeof(FilipinoG2p),
-        };
-
+        private List<Type> GetAvailableG2ps()
+        {
+            var g2ps = new List<Type>();
+            // Load from current assembly & Core
+            var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+            foreach (var assembly in assemblies)
+            {
+                try {
+                    foreach (var type in assembly.GetExportedTypes())
+                    {
+                        if (!type.IsAbstract && type.IsSubclassOf(typeof(Api.G2pPack)))
+                        {
+                            g2ps.Add(type);
+                        }
+                    }
+                } catch { }
+            }
+            return g2ps.Distinct().ToList();
+        }
 
         [HttpPost("wavtool/install")]
         public async Task<IActionResult> InstallWavtool(IFormFile file)
@@ -102,10 +106,10 @@ namespace OpenUtau.Api.Controllers
         public IActionResult PhoneticAssistant([FromQuery] string g2p, [FromQuery] string grapheme)
         {
             if (string.IsNullOrEmpty(g2p) && string.IsNullOrEmpty(grapheme)) {
-                return Ok(g2ps.Select(t => t.Name).ToList());
+                return Ok(GetAvailableG2ps().Select(t => t.Name).ToList());
             }
 
-            var g2pType = g2ps.FirstOrDefault(t => t.Name == g2p);
+            var g2pType = GetAvailableG2ps().FirstOrDefault(t => t.Name == g2p);
             if (g2pType == null) {
                 return BadRequest(new { Error = "G2P not found" });
             }
