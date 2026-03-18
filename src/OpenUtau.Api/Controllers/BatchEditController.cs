@@ -46,6 +46,24 @@ namespace OpenUtau.Api.Controllers
                     case "bake-pitch":
                         edit = new BakePitch();
                         break;
+                                        case "romaji-to-hiragana":
+                        edit = new RomajiToHiragana();
+                        break;
+                    case "hiragana-to-romaji":
+                        edit = new HiraganaToRomaji();
+                        break;
+                    case "japanese-vcv-to-cv":
+                        edit = new JapaneseVCVtoCV();
+                        break;
+                    case "katakana-to-hiragana":
+                        edit = new KatakanaToHiragana();
+                        break;
+                    case "hiragana-to-katakana":
+                        edit = new HiraganaToKatakana();
+                        break;
+                    case "korean-romaji-to-hangeul":
+                        edit = new KoreanRomajiToHangeul();
+                        break;
                     case "hanzi-to-pinyin":
                         edit = new HanziToPinyin();
                         break;
@@ -106,4 +124,27 @@ namespace OpenUtau.Api.Controllers
             }
         }
     }
+
+    public class KatakanaToHiragana : SingleNoteLyricEdit {
+        public override string Name => "katakana-to-hiragana";
+        protected override string Transform(string lyric) {
+            return WanaKanaNet.WanaKana.ToHiragana(lyric);
+        }
+    }
+
+    public class HiraganaToKatakana : SingleNoteLyricEdit {
+        public override string Name => "hiragana-to-katakana";
+        protected override string Transform(string lyric) {
+            return WanaKanaNet.WanaKana.ToKatakana(lyric);
+        }
+    }
+
+    public class KoreanRomajiToHangeul : SingleNoteLyricEdit {
+        public override string Name => "korean-romaji-to-hangeul";
+        protected override string Transform(string lyric) {
+            var hangeul = KoreanPhonemizerUtil.TryParseKoreanRomaji(lyric);
+            return hangeul ?? lyric;
+        }
+    }
+
 }
