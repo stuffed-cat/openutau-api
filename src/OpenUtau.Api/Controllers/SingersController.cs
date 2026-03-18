@@ -37,6 +37,13 @@ namespace OpenUtau.Api.Controllers
         }
 
 
+        [HttpPost("refresh")]
+        public IActionResult RefreshSingers()
+        {
+            SingerManager.Inst.SearchAllSingers();
+            return Ok(new { message = "Singers refreshed successfully" });
+        }
+
         [HttpPost("install")]
         [HttpPost("/api/voicebanks/import")]
         public IActionResult InstallSinger([FromForm] string archiveFilePath, [FromForm] string archiveEncoding = "shift_jis", [FromForm] string textEncoding = "shift_jis", [FromForm] string singerType = "utau")
