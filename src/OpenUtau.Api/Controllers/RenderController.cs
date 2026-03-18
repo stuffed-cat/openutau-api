@@ -32,6 +32,49 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+
+        [HttpGet("cache/status")]
+        public IActionResult GetCacheStatus()
+        {
+            try
+            {
+                var cachePath = PathManager.Inst.CachePath;
+                if (!Directory.Exists(cachePath))
+                {
+                    return Ok(new { totalSize = 0, fileCount = 0, message = "Cache directory does not exist yet." });
+                }
+
+                var dirInfo = new DirectoryInfo(cachePath);
+                var files = dirInfo.GetFiles("*", SearchOption.AllDirectories);
+                long totalSize = 0;
+                foreach (var file in files)
+                {
+                    totalSize += file.Length;
+                }
+
+                // Breakdown by extension
+                var breakdown = new System.Collections.Generic.Dictionary<string, long>();
+                foreach (var file in files)
+                {
+                    var ext = file.Extension.ToLower();
+                    if (string.IsNullOrEmpty(ext)) ext = "no_extension";
+                    if (!breakdown.ContainsKey(ext)) breakdown[ext] = 0;
+                    breakdown[ext] += file.Length;
+                }
+
+                return Ok(new {
+                    totalSizeBytes = totalSize,
+                    totalSizeMB = totalSize / 1024.0 / 1024.0,
+                    fileCount = files.Length,
+                    breakdown
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpPost("part")]
         public async Task<IActionResult> RenderPart(IFormFile file, [FromQuery] int partIndex = 0)
         {
