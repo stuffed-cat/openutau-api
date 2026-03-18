@@ -186,6 +186,81 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpPost("export/vsqx/{partNo}")]
+        public IActionResult ExportVsqx(IFormFile file, int partNo)
+        {
+            try
+            {
+                var project = LoadProjectFromRequest(file);
+                if (project == null) return BadRequest("Invalid project");
+                if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
+                var part = project.parts[partNo] as UVoicePart;
+                if (part == null) return BadRequest("Part is not voice part");
+
+                var outTemp = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".vsqx");
+                OpenUtau.Api.Utils.SimpleExporters.ExportVsqx(project, part, outTemp);
+
+                var bytes = System.IO.File.ReadAllBytes(outTemp);
+                System.IO.File.Delete(outTemp);
+
+                return File(bytes, "application/xml", $"part_{partNo}.vsqx");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("export/musicxml/{partNo}")]
+        public IActionResult ExportMusicXML(IFormFile file, int partNo)
+        {
+            try
+            {
+                var project = LoadProjectFromRequest(file);
+                if (project == null) return BadRequest("Invalid project");
+                if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
+                var part = project.parts[partNo] as UVoicePart;
+                if (part == null) return BadRequest("Part is not voice part");
+
+                var outTemp = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".musicxml");
+                OpenUtau.Api.Utils.SimpleExporters.ExportMusicXML(project, part, outTemp);
+
+                var bytes = System.IO.File.ReadAllBytes(outTemp);
+                System.IO.File.Delete(outTemp);
+
+                return File(bytes, "application/vnd.recordare.musicxml+xml", $"part_{partNo}.musicxml");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("export/vpr/{partNo}")]
+        public IActionResult ExportVpr(IFormFile file, int partNo)
+        {
+            try
+            {
+                var project = LoadProjectFromRequest(file);
+                if (project == null) return BadRequest("Invalid project");
+                if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
+                var part = project.parts[partNo] as UVoicePart;
+                if (part == null) return BadRequest("Part is not voice part");
+
+                var outTemp = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".vpr");
+                OpenUtau.Api.Utils.SimpleExporters.ExportVpr(project, part, outTemp);
+
+                var bytes = System.IO.File.ReadAllBytes(outTemp);
+                System.IO.File.Delete(outTemp);
+
+                return File(bytes, "application/zip", $"part_{partNo}.vpr");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpGet("voicebank/{singerId}/oto")]
         public IActionResult ExportOto(string singerId)
         {
