@@ -11,6 +11,25 @@ namespace OpenUtau.Api.Tests
     [Collection("Sequential")]
     public class PartsControllerTests
     {
+
+        [Fact]
+        public void UpdateCurve_ValidData_UpdatesCurveSuccessfully()
+        {
+            var result = _controller.UpdateCurve(0, "dyn", new PartsController.CurveUpdateData {
+                xs = new[] { 0, 10, 20 },
+                ys = new[] { 0, 50, 100 }
+            });
+
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var project = DocManager.Inst.Project;
+            var part = project.parts[0] as UVoicePart;
+            var curve = part.curves.FirstOrDefault(c => c.abbr == "dyn");
+            
+            Assert.NotNull(curve);
+            Assert.Equal(3, curve.xs.Count);
+            Assert.Equal(50, curve.ys[1]);
+        }
+
         private readonly PartsController _controller;
 
         public PartsControllerTests()

@@ -68,6 +68,43 @@ namespace OpenUtau.Api.Controllers
             });
         }
 
+        public class CurveUpdateData {
+            public int[] xs { get; set; }
+            public int[] ys { get; set; }
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}")]
+        public IActionResult UpdateCurve(int partNo, string abbr, [FromBody] CurveUpdateData request) {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+            var partBase = project.parts[partNo];
+            if (partBase == null) return NotFound("Part not found");
+
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            if (request == null || request.xs == null || request.ys == null || request.xs.Length != request.ys.Length) {
+                return BadRequest("Invalid curve data");
+            }
+
+            var curve = part.curves.FirstOrDefault(c => c.abbr == abbr);
+            int[] oldXs = curve?.xs.ToArray() ?? new int[0];
+            int[] oldYs = curve?.ys.ToArray() ?? new int[0];
+
+            if (curve == null) {
+                if (!project.expressions.ContainsKey(abbr)) {
+                    project.expressions.Add(abbr, new UExpressionDescriptor(abbr, abbr, -1000, 1000, 0) { type = UExpressionType.Curve });
+                }
+            }
+
+            DocManager.Inst.StartUndoGroup("api");
+            DocManager.Inst.ExecuteCmd(new MergedSetCurveCommand(project, part, abbr, oldXs, oldYs, request.xs, request.ys));
+            DocManager.Inst.EndUndoGroup();
+
+            return Ok(new { message = $"Curve {abbr} updated with {request.xs.Length} points" });
+        }
+
         private IActionResult ExecuteEdit(IFormFile file, System.Action<UProject> action)
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
