@@ -16,8 +16,8 @@ namespace OpenUtau.Api.Controllers
     [Route("api/[controller]")]
     public class FormatController : ControllerBase
     {
-        [HttpPost("import")]
-        public IActionResult ImportProject(IFormFile file)
+                [HttpPost("import")]
+        public IActionResult ImportProject(IFormFile file, [FromQuery] string? tracks = null)
         {
             if (file == null || file.Length == 0) return BadRequest("Missing file");
 
@@ -31,6 +31,31 @@ namespace OpenUtau.Api.Controllers
 
                 var project = Formats.ReadProject(new string[] { tempFile });
                 if (project == null) return BadRequest("Failed to import format.");
+
+                if (!string.IsNullOrEmpty(tracks))
+                {
+                    var selectedTracks = tracks.Split(',').Select(s => int.TryParse(s, out var i) ? i : -1).Where(i => i >= 0).ToHashSet();
+                    var oldTracks = project.tracks.ToList();
+                    project.tracks.Clear();
+                    var oldParts = project.parts.ToList();
+                    project.parts.Clear();
+
+                    int newTrackNo = 0;
+                    for (int i = 0; i < oldTracks.Count; i++) {
+                        if (selectedTracks.Contains(i) || selectedTracks.Contains(oldTracks[i].TrackNo)) {
+                            var track = oldTracks[i];
+                            int oldTrackNo = track.TrackNo;
+                            track.TrackNo = newTrackNo;
+                            project.tracks.Add(track);
+
+                            foreach (var part in oldParts.Where(p => p.trackNo == oldTrackNo)) {
+                                part.trackNo = newTrackNo;
+                                project.parts.Add(part);
+                            }
+                            newTrackNo++;
+                        }
+                    }
+                }
 
                 // Convert to YAML/JSON string (using USTx save logic we can just serialize it or save to temp and read)
                 var outTemp = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".ustx");
@@ -61,6 +86,31 @@ namespace OpenUtau.Api.Controllers
                 return Formats.ReadProject(new string[] { tempFile });
             } finally {
                 if (System.IO.File.Exists(tempFile)) System.IO.File.Delete(tempFile);
+            }
+        }
+
+        
+        [HttpPost("inspect")]
+        public IActionResult InspectProject(IFormFile file)
+        {
+            try
+            {
+                var project = LoadProjectFromRequest(file);
+                if (project == null) return BadRequest("Invalid project");
+
+                var tracksInfo = project.tracks.Select(t => new {
+                    TrackNo = t.TrackNo,
+                    TrackName = t.TrackName,
+                    NoteCount = project.parts
+                        .Where(p => p.trackNo == t.TrackNo && p is UVoicePart)
+                        .Sum(p => ((UVoicePart)p).notes.Count)
+                }).ToList();
+
+                return Ok(new { Tracks = tracksInfo });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 

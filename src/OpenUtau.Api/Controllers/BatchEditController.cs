@@ -46,7 +46,7 @@ namespace OpenUtau.Api.Controllers
                     case "bake-pitch":
                         edit = new BakePitch();
                         break;
-                                        case "romaji-to-hiragana":
+                    case "romaji-to-hiragana":
                         edit = new RomajiToHiragana();
                         break;
                     case "hiragana-to-romaji":

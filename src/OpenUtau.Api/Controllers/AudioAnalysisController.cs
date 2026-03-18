@@ -65,8 +65,8 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
-        [HttpPost("midi")]
-        public IActionResult ImportMidi(IFormFile file)
+                [HttpPost("midi")]
+        public IActionResult ImportMidi(IFormFile file, [FromQuery] string? tracks = null)
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded.");
             var tempFile = SaveTempFile(file, ".mid");
@@ -76,6 +76,31 @@ namespace OpenUtau.Api.Controllers
                 UProject project = Formats.ReadProject(new string[] { tempFile });
                 if (project == null) return BadRequest("Failed to read MIDI project.");
                 
+                if (!string.IsNullOrEmpty(tracks))
+                {
+                    var selectedTracks = tracks.Split(',').Select(s => int.TryParse(s, out var i) ? i : -1).Where(i => i >= 0).ToHashSet();
+                    var oldTracks = project.tracks.ToList();
+                    project.tracks.Clear();
+                    var oldParts = project.parts.ToList();
+                    project.parts.Clear();
+
+                    int newTrackNo = 0;
+                    for (int i = 0; i < oldTracks.Count; i++) {
+                        if (selectedTracks.Contains(i) || selectedTracks.Contains(oldTracks[i].TrackNo)) {
+                            var track = oldTracks[i];
+                            int oldTrackNo = track.TrackNo;
+                            track.TrackNo = newTrackNo;
+                            project.tracks.Add(track);
+
+                            foreach (var part in oldParts.Where(p => p.trackNo == oldTrackNo)) {
+                                part.trackNo = newTrackNo;
+                                project.parts.Add(part);
+                            }
+                            newTrackNo++;
+                        }
+                    }
+                }
+
                 System.IO.File.Delete(tempFile);
 
                 var outTemp = Path.Combine(Path.GetTempPath(), "OpenUtauApi", Guid.NewGuid().ToString() + ".ustx");
@@ -89,6 +114,35 @@ namespace OpenUtau.Api.Controllers
             {
                 if (System.IO.File.Exists(tempFile)) System.IO.File.Delete(tempFile);
                 return StatusCode(500, ex.Message);
+            }
+        }
+
+        
+        [HttpPost("midi/inspect")]
+        public IActionResult InspectMidi(IFormFile file)
+        {
+            var tempFile = SaveTempFile(file, ".mid");
+            try
+            {
+                var project = Formats.ReadProject(new string[] { tempFile });
+                
+                System.IO.File.Delete(tempFile);
+                if (project == null) return BadRequest("Invalid project");
+
+                var tracksInfo = project.tracks.Select(t => new {
+                    TrackNo = t.TrackNo,
+                    TrackName = t.TrackName,
+                    NoteCount = project.parts
+                        .Where(p => p.trackNo == t.TrackNo && p is UVoicePart)
+                        .Sum(p => ((UVoicePart)p).notes.Count)
+                }).ToList();
+
+                return Ok(new { Tracks = tracksInfo });
+            }
+            catch (Exception ex)
+            {
+                if (System.IO.File.Exists(tempFile)) System.IO.File.Delete(tempFile);
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
