@@ -27,7 +27,7 @@ namespace OpenUtau.Api.Tests
             // Oh actually there is "ClearHistory"? No, DocManager creates new project history when UProject is set.
 // removed
             // Let's just create a new project and set it.
-            SetupHelper.SetProject(new UProject());
+            SetupHelper.CreateAndLoadRealProject();
             _project = DocManager.Inst.Project;
             _project.tracks.Clear(); _project.tracks.Add(new UTrack(_project) { TrackNo = 0 });
             _project.parts.Clear();

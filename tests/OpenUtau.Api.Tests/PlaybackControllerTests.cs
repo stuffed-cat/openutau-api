@@ -16,12 +16,12 @@ namespace OpenUtau.Api.Tests
         public PlaybackControllerTests()
         {
             SetupHelper.InitDocManager();
-            var project = new UProject();
+            SetupHelper.CreateAndLoadRealProject(project => {
             var track = new UTrack(project);
             project.tracks.Add(track);
             var part = new UVoicePart();
             project.parts.Add(part);
-            SetupHelper.SetProject(project);
+            });
             _controller = new PlaybackController();
         }
 

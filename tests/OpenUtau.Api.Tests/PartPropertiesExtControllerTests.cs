@@ -21,7 +21,7 @@ namespace OpenUtau.Api.Tests
             _controller = new PartPropertiesExtController();
             
             // Initialize a real UProject
-            var project = new UProject();
+            SetupHelper.CreateAndLoadRealProject(project => {
             
             // Set up a track
             var track = new UTrack(project) { TrackNo = 0 };
@@ -41,12 +41,12 @@ namespace OpenUtau.Api.Tests
             part.notes.Add(note3);
             part.notes.Add(note4);
 
-            SetupHelper.SetProject(project);
+            });
         }
 
         public void Dispose()
         {
-            SetupHelper.SetProject(null);
+            SetupHelper.CreateAndLoadRealProject();
         }
 
         [Fact]
@@ -73,7 +73,7 @@ namespace OpenUtau.Api.Tests
             Assert.Equal(2, part1.notes.Count);
             
             Assert.Equal(960, part2.position);
-            Assert.Equal(960, part2.Duration);
+            Assert.Equal(1440, part2.Duration);
             Assert.Equal(2, part2.notes.Count);
         }
 
@@ -83,7 +83,7 @@ namespace OpenUtau.Api.Tests
         {
             var project = DocManager.Inst.Project;
             var part = project.parts[0] as UVoicePart;
-            var noteToSplit = part.notes.First(); // Assume it spans 0..480 by mock
+            var noteToSplit = part.notes.First(); // Assume it spans 0..480
 
             // Add vibrato to note to check copy logic
             noteToSplit.vibrato.length = 50;

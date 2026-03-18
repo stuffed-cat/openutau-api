@@ -37,7 +37,7 @@ namespace OpenUtau.Api.Tests
             SetupHelper.InitDocManager();
             _controller = new PartsController();
             
-            var project = new UProject();
+            SetupHelper.CreateAndLoadRealProject(project => {
             project.tracks.Add(new UTrack(project) { TrackNo = 0 });
             
             var part1 = new UVoicePart()
@@ -63,7 +63,7 @@ namespace OpenUtau.Api.Tests
             project.parts.Add(part1);
             project.parts.Add(part2);
 
-            SetupHelper.SetProject(project);
+            });
         }
 
         [Fact]

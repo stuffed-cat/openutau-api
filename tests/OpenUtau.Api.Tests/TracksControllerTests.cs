@@ -16,7 +16,7 @@ namespace OpenUtau.Api.Tests
             SetupHelper.InitDocManager();
             _controller = new TracksController();
             
-            var project = new UProject();
+            SetupHelper.CreateAndLoadRealProject(project => {
             project.tracks.Clear();
             var track = new UTrack(project) 
             { 
@@ -26,7 +26,7 @@ namespace OpenUtau.Api.Tests
             };
             project.tracks.Add(track);
 
-            SetupHelper.SetProject(project);
+            });
         }
 
         [Fact]

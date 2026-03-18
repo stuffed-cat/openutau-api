@@ -46,7 +46,7 @@ namespace OpenUtau.Api.Controllers
                 var baseFile = Path.Combine(Path.GetTempPath(), "track_export_" + pathHelper());
                 await PlaybackManager.Inst.RenderMixdown(project, baseFile);
 
-                var wavFile = baseFile + ".wav";
+                var wavFile = baseFile;
                 System.IO.File.Delete(tempFile);
 
                 if (!System.IO.File.Exists(wavFile))

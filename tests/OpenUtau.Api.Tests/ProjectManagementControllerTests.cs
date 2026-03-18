@@ -18,7 +18,7 @@ namespace OpenUtau.Api.Tests
             SetupHelper.InitDocManager();
             _controller = new ProjectManagementController();
             
-            SetupHelper.SetProject(new UProject());
+            SetupHelper.CreateAndLoadRealProject();
             _project = DocManager.Inst.Project;
             _project.tracks.Clear();
             _project.tracks.Add(new UTrack(_project) { TrackNo = 0 });
@@ -80,7 +80,7 @@ namespace OpenUtau.Api.Tests
         [Fact]
         public void RemapTimeAxis_NoProject_ReturnsBadRequest()
         {
-            SetupHelper.SetProject(null);
+            DocManager.Inst.ExecuteCmd(new LoadProjectNotification(null));
             var response = _controller.RemapTimeAxis(120);
             
             var badRequest = response as BadRequestObjectResult;

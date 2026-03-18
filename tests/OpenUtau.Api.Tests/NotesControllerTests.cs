@@ -52,19 +52,20 @@ namespace OpenUtau.Api.Tests
 
         private UProject CreateTestProject(out UVoicePart part)
         {
-            var project = new UProject();
-            var track = new UTrack(project);
-            project.tracks.Add(track);
-            
-            part = new UVoicePart() { trackNo = 0, position = 0, Duration = 1000 };
-            project.parts.Add(part);
-            
-            var note = project.CreateNote(60, 480, 480);
-            note.lyric = "test";
-            part.notes.Add(note);
-
-            SetupHelper.SetProject(project);
-            return project;
+            SetupHelper.CreateAndLoadRealProject(project => {
+                var track = new UTrack(project);
+                project.tracks.Add(track);
+                
+                var p = new UVoicePart() { trackNo = 0, position = 0, Duration = 1000 };
+                project.parts.Add(p);
+                
+                var note = project.CreateNote(60, 480, 480);
+                note.lyric = "test";
+                p.notes.Add(note);
+            });
+            var p_ref = DocManager.Inst.Project.parts[0] as UVoicePart;
+            part = p_ref;
+            return DocManager.Inst.Project;
         }
 
         private IFormFile CreateProjectFile(UProject project)

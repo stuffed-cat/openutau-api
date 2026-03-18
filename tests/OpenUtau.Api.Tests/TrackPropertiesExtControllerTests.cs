@@ -18,19 +18,19 @@ namespace OpenUtau.Api.Tests
             _controller = new TrackPropertiesExtController();
             
             // Initialize a real UProject
-            var project = new UProject();
+            SetupHelper.CreateAndLoadRealProject(project => {
             
             // Set up two tracks
             project.tracks.Add(new UTrack { TrackNo = 0, Mute = false, Solo = false, Volume = 0, Pan = 0 });
             project.tracks.Add(new UTrack { TrackNo = 1, Mute = false, Solo = false, Volume = 0, Pan = 0 });
             
             SetupHelper.InitDocManager();
-            SetupHelper.SetProject(project);
+            });
         }
 
         public void Dispose()
         {
-            SetupHelper.SetProject(null);
+            SetupHelper.CreateAndLoadRealProject();
         }
 
         [Fact]
