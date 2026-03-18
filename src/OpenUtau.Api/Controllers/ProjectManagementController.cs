@@ -488,17 +488,83 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
-        [HttpPost("session/executeCommand")]
-        public IActionResult SessionExecute([FromBody] string commandType)
+
+        public class CommandRequest
         {
-            // Provided as an example of making a history-tracked stateful change
-            if (DocManager.Inst.Project == null) return BadRequest("No project in session");
-            
-            // Note: True command integration would map 'commandType' to specific UCommands (e.g. AddNoteCommand)
-            // Here we just trigger a mock command or rely on the frontend to know the schema.
-            // For now, returning success.
-            return Ok(new { message = "Ready for command architecture (use native UCommands for history scaling)." });
+            public string CommandType { get; set; }
+            public System.Text.Json.JsonElement Args { get; set; }
         }
+
+        [HttpPost("session/executeCommand")]
+        public IActionResult SessionExecute([FromBody] CommandRequest request)
+        {
+            if (DocManager.Inst.Project == null) return BadRequest("No project in session");
+            try
+            {
+                var cmdType = typeof(UCommand).Assembly.GetTypes()
+                    .FirstOrDefault(t => t.IsSubclassOf(typeof(UCommand)) && t.Name == request.CommandType);
+
+                if (cmdType == null)
+                {
+                    return BadRequest($"Command '{request.CommandType}' not found.");
+                }
+
+                // Simple reflection based constructor arguments mapping
+                var constructors = cmdType.GetConstructors();
+                if (constructors.Length == 0) return BadRequest("No valid constructors found.");
+                var constructor = constructors[0];
+                var parameters = constructor.GetParameters();
+                var argsList = new List<object>();
+
+                foreach (var param in parameters)
+                {
+                    if (param.ParameterType == typeof(UProject))
+                    {
+                        argsList.Add(DocManager.Inst.Project);
+                        continue;
+                    }
+
+                    if (request.Args.ValueKind == System.Text.Json.JsonValueKind.Object && request.Args.TryGetProperty(param.Name, out var prop))
+                    {
+                        try {
+                            var val = System.Text.Json.JsonSerializer.Deserialize(prop.GetRawText(), param.ParameterType);
+                            argsList.Add(val);
+                        } catch {
+                            // If deserialize fails, provide a default if optional, else throw
+                            if (param.HasDefaultValue) argsList.Add(param.DefaultValue);
+                            else throw new ArgumentException($"Missing or invalid argument '{param.Name}'");
+                        }
+                    }
+                    else if (param.HasDefaultValue)
+                    {
+                        argsList.Add(param.DefaultValue);
+                    }
+                    else
+                    {
+                        // Some special handling for specific types if needed.
+                        // Throw missing param for primitive types that aren't optional
+                        if (param.ParameterType.IsPrimitive || param.ParameterType == typeof(string))
+                            throw new ArgumentException($"Missing required argument: {param.Name}");
+                        argsList.Add(null); // Just put null for objects, though it may fail later
+                    }
+                }
+
+                var cmdObj = constructor.Invoke(argsList.ToArray());
+                
+                if (cmdObj is UCommand command)
+                {
+                    DocManager.Inst.ExecuteCmd(command);
+                    return Ok(new { message = $"Command {request.CommandType} executed successfully." });
+                }
+                
+                return BadRequest("Not a valid UCommand.");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message, stack = ex.StackTrace });
+            }
+        }
+
 
     }
 }
