@@ -4,6 +4,7 @@ using System.Threading;
 using OpenUtau.Core;
 using Serilog;
 using OpenUtau.Core.Ustx;
+[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
 
 namespace OpenUtau.Api.Tests
 {
@@ -16,9 +17,11 @@ namespace OpenUtau.Api.Tests
         {
             lock (_lock)
             {
+                System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
                 // Force DocManager to use current thread as main thread whenever called!
                 var field = typeof(DocManager).GetField("mainThread", BindingFlags.Instance | BindingFlags.NonPublic);
                 field?.SetValue(DocManager.Inst, Thread.CurrentThread);
+                DocManager.Inst.Initialize(Thread.CurrentThread, System.Threading.Tasks.TaskScheduler.Default);
 
                 if (_initialized) return;
 
@@ -29,6 +32,7 @@ namespace OpenUtau.Api.Tests
                     // Temporarily set the mainthread to current thread to avoid infinite loops
                     var currentMainThread = field?.GetValue(DocManager.Inst) as Thread;
                     field?.SetValue(DocManager.Inst, Thread.CurrentThread);
+                DocManager.Inst.Initialize(Thread.CurrentThread, System.Threading.Tasks.TaskScheduler.Default);
                     try 
                     {
                         // Ensure action runs genuinely synchronously
@@ -58,3 +62,4 @@ namespace OpenUtau.Api.Tests
         }
     }
 }
+
