@@ -69,5 +69,28 @@ namespace OpenUtau.Api.Tests
             var project = DocManager.Inst.Project;
             Assert.Equal("Red", project.tracks[0].TrackColor);
         }
+
+        [Fact]
+        public void SetTrackSinger_ValidSinger_ChangesSinger()
+        {
+            var vb = new OpenUtau.Classic.Voicebank() { Id = "TestSinger", Name = "TestSinger", File = "dummy/character.txt", BasePath = "dummy" };
+            var singer = new OpenUtau.Classic.ClassicSinger(vb);
+            OpenUtau.Core.SingerManager.Inst.Singers["TestSinger"] = singer;
+
+            var result = _controller.SetTrackSinger(0, "TestSinger");
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            
+            var project = DocManager.Inst.Project;
+            Assert.NotNull(project.tracks[0].Singer);
+            Assert.Same(singer, project.tracks[0].Singer);
+        }
+
+        [Fact]
+        public void SetTrackSinger_InvalidSinger_ReturnsBadRequest()
+        {
+            var result = _controller.SetTrackSinger(0, "NonExistentSinger");
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Contains("not found", badRequestResult.Value.ToString());
+        }
     }
 }

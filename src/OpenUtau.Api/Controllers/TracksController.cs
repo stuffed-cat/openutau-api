@@ -99,6 +99,30 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpPost("{trackIndex}/setsinger")]
+        public IActionResult SetTrackSinger(int trackIndex, [FromQuery] string singerName)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+
+            try
+            {
+                var singer = SingerManager.Inst.GetSinger(singerName);
+                if (singer == null) return BadRequest($"Singer '{singerName}' not found");
+
+                var track = project.tracks[trackIndex];
+                DocManager.Inst.StartUndoGroup("api");
+                DocManager.Inst.ExecuteCmd(new TrackChangeSingerCommand(project, track, singer));
+                DocManager.Inst.EndUndoGroup();
+                return Ok(new { message = $"Track {trackIndex} singer set to {singer.Name}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpPost("{trackIndex}/setphonmizer")]
         public IActionResult SetTrackPhonemizer(int trackIndex, [FromQuery] string phonemizerName)
         {
