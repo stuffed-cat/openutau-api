@@ -59,6 +59,73 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpGet("{id}/image")]
+        public IActionResult GetSingerImage(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+            
+            singer.EnsureLoaded();
+            if (singer.AvatarData == null || singer.AvatarData.Length == 0)
+            {
+                return NotFound(new { error = "Image not found" });
+            }
+            
+            string extension = System.IO.Path.GetExtension(singer.Avatar)?.ToLowerInvariant() ?? "";
+            string mimeType = extension switch
+            {
+                ".png" => "image/png",
+                ".jpg" => "image/jpeg",
+                ".jpeg" => "image/jpeg",
+                ".bmp" => "image/bmp",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                _ => "application/octet-stream",
+            };
+
+            return File(singer.AvatarData, mimeType);
+        }
+
+        [HttpGet("{id}/portrait")]
+        public IActionResult GetSingerPortrait(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            try
+            {
+                var portraitData = singer.LoadPortrait();
+                if (portraitData == null || portraitData.Length == 0)
+                {
+                    return NotFound(new { error = "Portrait not found" });
+                }
+
+                string extension = System.IO.Path.GetExtension(singer.Portrait)?.ToLowerInvariant() ?? "";
+                string mimeType = extension switch
+                {
+                    ".png" => "image/png",
+                    ".jpg" => "image/jpeg",
+                    ".jpeg" => "image/jpeg",
+                    ".bmp" => "image/bmp",
+                    ".gif" => "image/gif",
+                    ".webp" => "image/webp",
+                    _ => "application/octet-stream",
+                };
+
+                return File(portraitData, mimeType);
+            }
+            catch
+            {
+                return NotFound(new { error = "Error loading portrait" });
+            }
+        }
+
         [HttpGet("{id}/otos")]
         public IActionResult GetSingerOtos(string id)
         {
