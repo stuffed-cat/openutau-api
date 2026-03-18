@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Xunit;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
+using OpenUtau.Core.Util;
 using OpenUtau.Api.Controllers;
 
 namespace OpenUtau.Api.Tests
@@ -74,6 +75,45 @@ namespace OpenUtau.Api.Tests
             Assert.Equal(960, part2.position);
             Assert.Equal(960, part2.Duration);
             Assert.Equal(2, part2.notes.Count);
+        }
+
+
+        [Fact]
+        public void SplitNote_ValidTick_ShouldSplitNoteAndMaintainVibrato()
+        {
+            var project = DocManager.Inst.Project;
+            var part = project.parts[0] as UVoicePart;
+            var noteToSplit = part.notes.First(); // Assume it spans 0..480 by mock
+
+            // Add vibrato to note to check copy logic
+            noteToSplit.vibrato.length = 50;
+            noteToSplit.vibrato.period = 175;
+            noteToSplit.vibrato.depth = 25;
+            noteToSplit.vibrato.@in = 10;
+            noteToSplit.vibrato.@out = 10;
+            noteToSplit.vibrato.shift = 0;
+            noteToSplit.duration = 480;
+
+            int originalCount = part.notes.Count;
+            int splitTick = 240; // absolute is false by default, so it's part relative
+
+            var result = _controller.SplitNote(0, 0, splitTick);
+
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            
+            // Should have 1 more note
+            Assert.Equal(originalCount + 1, part.notes.Count);
+            
+            // Wait, Notes are in a SortedSet, so index 0 and 1 are the split results
+            var n1 = part.notes.ElementAt(0);
+            var n2 = part.notes.ElementAt(1);
+
+            Assert.Equal(0, n1.position);
+            Assert.Equal(240, n1.duration);
+            
+            Assert.Equal(240, n2.position);
+            Assert.Equal(240, n2.duration);
+            Assert.Equal(NotePresets.Default.SplittedLyric ?? "-", n2.lyric);
         }
 
         [Fact]
