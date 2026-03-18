@@ -5,6 +5,12 @@ using OpenUtau.Core.Format;
 using System.IO;
 using System;
 using System.Linq;
+using OpenUtau.Core;
+using OpenUtau.Core.Analysis;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+
 
 namespace OpenUtau.Api.Controllers
 {
@@ -145,5 +151,203 @@ namespace OpenUtau.Api.Controllers
                 }
             });
         }
+    
+        [HttpPost("{partIndex}/rename")]
+        public IActionResult RenamePart(int partIndex, [FromQuery] string name)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
+            
+            var part = project.parts[partIndex];
+            DocManager.Inst.ExecuteCmd(new RenamePartCommand(project, part, name));
+            return Ok(new { message = $"Part renamed to {name}" });
+        }
+
+        [HttpPost("{partIndex}/replaceaudio")]
+        public async Task<IActionResult> ReplaceAudio(int partIndex, IFormFile audioFile)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
+            
+            var part = project.parts[partIndex];
+            if (!(part is UWavePart)) return BadRequest("Target part is not a wave part.");
+
+            if (audioFile == null || audioFile.Length == 0) return BadRequest("No audio file provided.");
+
+            try
+            {
+                var audioPath = Path.Combine(Path.GetTempPath(), audioFile.FileName);
+                using (var stream = new FileStream(audioPath, FileMode.Create))
+                {
+                    await audioFile.CopyToAsync(stream);
+                }
+
+                UWavePart newPart = new UWavePart() {
+                    FilePath = audioPath,
+                    trackNo = part.trackNo,
+                    position = part.position
+                };
+                newPart.Load(project);
+
+                DocManager.Inst.StartUndoGroup("command.import.audio");
+                DocManager.Inst.ExecuteCmd(new ReplacePartCommand(project, part, newPart));
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { message = "Audio replaced successfully.", filePath = audioPath });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{partIndex}/transcribe")]
+        public async Task<IActionResult> TranscribePart(int partIndex)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
+            
+            var part = project.parts[partIndex];
+            if (!(part is UWavePart wavePart)) return BadRequest("Target part is not a wave part.");
+
+            try
+            {
+                UVoicePart? voicePart = null;
+                using (var game = new Game())
+                {
+                    var options = new GameOptions();
+                    var batching = new MidiExtractor<GameOptions>.BatchingStrategy();
+                    
+                    voicePart = await Task.Run(() => {
+                        return game.Transcribe(project, wavePart,
+                            options, batching,
+                            () => true, 
+                            (processedS, totalS) => { }
+                        );
+                    });
+                }
+                
+                if (voicePart != null)
+                {
+                    var track = new UTrack(project);
+                    track.TrackNo = project.tracks.Count;
+                    voicePart.trackNo = track.TrackNo;
+                    
+                    DocManager.Inst.StartUndoGroup("command.part.transcribe");
+                    DocManager.Inst.ExecuteCmd(new AddTrackCommand(project, track));
+                    DocManager.Inst.ExecuteCmd(new AddPartCommand(project, voicePart));
+                    DocManager.Inst.EndUndoGroup();
+                    
+                    return Ok(new { message = "Transcription completed successfully.", newTrackIndex = track.TrackNo, voicePartName = voicePart.name });
+                }
+                return BadRequest("Transcription returned null result.");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("{partIndex}/merge")]
+        public IActionResult MergeParts(int partIndex, [FromBody] int[] otherPartIndices)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            
+            var partsToMerge = new List<UPart>();
+            
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound($"Base part at index {partIndex} not found.");
+            partsToMerge.Add(project.parts[partIndex]);
+
+            if (otherPartIndices != null)
+            {
+                foreach (int idx in otherPartIndices)
+                {
+                    if (idx < 0 || idx >= project.parts.Count) return NotFound($"Part at index {idx} not found.");
+                    if (!partsToMerge.Contains(project.parts[idx]))
+                        partsToMerge.Add(project.parts[idx]);
+                }
+            }
+
+            if (partsToMerge.Count <= 1) return BadRequest("Need at least two parts to merge.");
+
+            int trackNo = partsToMerge.First().trackNo;
+            if (!partsToMerge.All(p => p.trackNo == trackNo))
+                return BadRequest("All parts to be merged must belong to the same track.");
+
+            var voiceParts = new List<UVoicePart>();
+            foreach (var p in partsToMerge)
+            {
+                if (p is UVoicePart vp) voiceParts.Add(vp);
+                else return BadRequest("Can only merge voice parts.");
+            }
+
+            try
+            {
+                UVoicePart mergedPart = voiceParts.Aggregate((merging, nextup) => {
+                    string newComment = merging.comment + nextup.comment;
+                    var (leftPart, rightPart) = (merging.position < nextup.position) ? (merging, nextup) : (nextup, merging);
+                    int newPosition = leftPart.position;
+                    int newDuration = Math.Max(leftPart.End, rightPart.End) - newPosition;
+                    int deltaPos = rightPart.position - leftPart.position;
+                    
+                    UVoicePart shiftPart = new UVoicePart();
+                    foreach (var note in rightPart.notes) {
+                        UNote shiftNote = note.Clone();
+                        shiftNote.position += deltaPos;
+                        shiftPart.notes.Add(shiftNote);
+                    }
+                    foreach (var curve in rightPart.curves) {
+                        UCurve shiftCurve = curve.Clone();
+                        for (var i = 0; i < shiftCurve.xs.Count; i++) {
+                            shiftCurve.xs[i] += deltaPos;
+                        }
+                        shiftPart.curves.Add(shiftCurve);
+                    }
+                    
+                    SortedSet<UNote> newNotes = new SortedSet<UNote>(leftPart.notes.Concat(shiftPart.notes));
+                    List<UCurve> newCurves = UCurve.MergeCurves(leftPart.curves, shiftPart.curves);
+                    
+                    return new UVoicePart() {
+                        name = partsToMerge[0].name,
+                        comment = newComment,
+                        trackNo = trackNo,
+                        position = newPosition,
+                        notes = newNotes,
+                        curves = newCurves,
+                        Duration = newDuration,
+                    };
+                });
+
+                ValidateOptions options = new ValidateOptions() {
+                    SkipTiming = true,
+                    Part = mergedPart,
+                    SkipPhoneme = false,
+                    SkipPhonemizer = false
+                };
+                mergedPart.Validate(options, project, project.tracks[trackNo]);
+
+                DocManager.Inst.StartUndoGroup("command.part.edit");
+                var partsToRemove = partsToMerge.OrderByDescending(p => project.parts.IndexOf(p)).ToList();
+                foreach (var pToRemove in partsToRemove)
+                {
+                    DocManager.Inst.ExecuteCmd(new RemovePartCommand(project, pToRemove));
+                }
+                DocManager.Inst.ExecuteCmd(new AddPartCommand(project, mergedPart));
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { message = "Parts merged successfully." });
+            }
+            catch (Exception ex)
+            {
+                DocManager.Inst.EndUndoGroup(); 
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+
     }
 }
