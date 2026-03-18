@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using System.IO;
+using System.Threading.Tasks;
 using OpenUtau.Core;
 using System.Linq;
 
@@ -135,39 +138,6 @@ namespace OpenUtau.Api.Controllers
             
             singer.Reload();
             return Ok(new { message = "Singer updated successfully" });
-        }
-
-        public class PublishRequest
-        {
-            public string OutputFile { get; set; } = string.Empty;
-            public bool UseIgnore { get; set; } = false;
-            public string? IgnoreTypes { get; set; }
-        }
-
-        [HttpPost("{id}/publish")]
-        public async Task<IActionResult> PublishSinger(string id, [FromBody] PublishRequest request)
-        {
-            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
-            if (singer == null)
-            {
-                return NotFound(new { error = "Singer not found" });
-            }
-
-            return await Task.Run<IActionResult>(() => {
-                try {
-                    if (System.IO.Directory.Exists(singer.Location)) {
-                        var publisher = new OpenUtau.Classic.VoicebankPublisher((progress, info) => {
-                            // API ignores progress
-                        }, request.UseIgnore ? request.IgnoreTypes : null);
-                        publisher.Publish(singer, request.OutputFile);    
-                    } else if (System.IO.File.Exists(singer.Location)) {
-                        System.IO.File.Copy(singer.Location, request.OutputFile, true);
-                    }
-                    return Ok(new { message = "Singer published successfully to " + request.OutputFile });
-                } catch (System.Exception e) {
-                    return BadRequest(new { error = e.Message });
-                }
-            });
         }
 
         public class MergeRequest

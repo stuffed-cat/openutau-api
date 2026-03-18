@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using System.IO;
+using System.Threading.Tasks;
 using OpenUtau.Core;
 using OpenUtau.Api;
 using OpenUtau.Core.Ustx;
@@ -30,6 +33,34 @@ namespace OpenUtau.Api.Controllers
             });
 
             return Ok(phonemizers);
+        }
+
+        [HttpPost("install")]
+        public async Task<IActionResult> InstallPhonemizer(IFormFile? file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file uploaded");
+
+            try
+            {
+                var tempPath = Path.Combine(Path.GetTempPath(), file.FileName);
+                using (var stream = new FileStream(tempPath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                OpenUtau.Core.Api.PhonemizerInstaller.Install(tempPath);
+                
+                if (System.IO.File.Exists(tempPath)) {
+                    System.IO.File.Delete(tempPath);
+                }
+
+                return Ok(new { Message = "Phonemizer installed successfully." });
+            }
+            catch (System.Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
         }
 
         [HttpPost("preview")]
