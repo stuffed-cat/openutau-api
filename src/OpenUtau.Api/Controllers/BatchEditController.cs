@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
 using OpenUtau.Core.Editing;
 using OpenUtau.Core.Format;
+using OpenUtau.Core.Ustx;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -12,33 +15,61 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class BatchEditController : ControllerBase
     {
-        [HttpPost("quantize")]
-        public IActionResult Quantize(IFormFile file, [FromQuery] int quantizeToTick = 15)
+        [HttpPost("run")]
+        public IActionResult RunBatchEdit(
+            [FromForm] IFormFile file, 
+            [FromQuery] string editName, 
+            [FromQuery] int partIndex = 0,
+            [FromQuery] int? quantize = 15)
         {
             return ExecuteEdit(file, (project) => 
             {
-                foreach(var part in project.parts.OfType<OpenUtau.Core.Ustx.UVoicePart>()) {
-                    foreach(var note in part.notes) {
-                        note.position = (note.position / quantizeToTick) * quantizeToTick;
-                    }
+                if (partIndex < 0 || partIndex >= project.parts.Count) return;
+                var part = project.parts[partIndex] as UVoicePart;
+                if (part == null) return;
+                
+                BatchEdit edit = null;
+                switch (editName.ToLowerInvariant())
+                {
+                    case "quantize":
+                        edit = new QuantizeNotes(quantize ?? 15);
+                        break;
+                    case "auto-legato":
+                        edit = new AutoLegato();
+                        break;
+                    case "fix-overlap":
+                        edit = new FixOverlap();
+                        break;
+                    case "hanzi-to-pinyin":
+                        edit = new HanziToPinyin();
+                        break;
+                    case "reset-pitch":
+                        edit = new ResetPitchBends();
+                        break;
+                    case "reset-vibrato":
+                        edit = new ResetVibratos();
+                        break;
+                    case "reset-aliases":
+                        edit = new ResetAliases();
+                        break;
+                    case "clear-timings":
+                        edit = new ClearTimings();
+                        break;
+                    case "reset-all":
+                        edit = new ResetAll();
+                        break;
+                    default:
+                        throw new ArgumentException("Unknown batch edit type: " + editName);
+                }
+
+                if (edit != null)
+                {
+                    edit.Run(project, part, part.notes.ToList(), DocManager.Inst);
                 }
             });
         }
 
-        [HttpPost("clear-pitch")]
-        public IActionResult ClearPitch(IFormFile file)
-        {
-            return ExecuteEdit(file, (project) => 
-            {
-                foreach(var part in project.parts.OfType<OpenUtau.Core.Ustx.UVoicePart>()) {
-                    foreach(var note in part.notes) {
-                        note.pitch.data.Clear();
-                    }
-                }
-            });
-        }
-
-        private IActionResult ExecuteEdit(IFormFile file, System.Action<OpenUtau.Core.Ustx.UProject> modifier)
+        private IActionResult ExecuteEdit([FromForm] IFormFile file, Action<UProject> modifier)
         {
             if (file == null || file.Length == 0) return BadRequest("No file uploaded");
 
@@ -63,7 +94,7 @@ namespace OpenUtau.Api.Controllers
                 var streamRet = new FileStream(outTemp, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
                 return File(streamRet, "application/json", "edited.ustx");
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 return StatusCode(500, new { error = ex.Message });
             }
