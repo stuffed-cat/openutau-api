@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using OpenUtau.Core;
 using OpenUtau.Core.Util;
+using OpenUtau.Api.Bootstrap;
 using OpenUtau.Api.Security;
 using System;
 using System.Text;
@@ -52,6 +53,7 @@ DocManager.Inst.PostOnUIThread = action => {
 };
 
 SingerManager.Inst.Initialize();
+CoreBootstrap.EnsurePhonemizerFactoriesLoaded();
 
 if (app.Environment.IsDevelopment())
 {
