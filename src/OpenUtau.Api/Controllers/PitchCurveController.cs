@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Editing;
+using OpenUtau.Core.Render;
 using System.Linq;
 using System.Collections.Generic;
 
@@ -188,6 +189,83 @@ namespace OpenUtau.Api.Controllers
             DocManager.Inst.EndUndoGroup();
 
             return Ok(new { message = "Pitch synchronization across part completed" });
+        }
+
+        [HttpGet("part/{partNo}/pitch/rendered")]
+        public IActionResult GetRenderedPitchCurve(int partNo)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
+            if (project.parts[partNo] is not UVoicePart part) return BadRequest("Not a voice part");
+
+            var track = project.tracks.ElementAtOrDefault(part.trackNo);
+            if (track == null) return BadRequest("Track not found");
+
+            var renderer = track.RendererSettings.Renderer;
+            if (renderer == null || !renderer.SupportsRenderPitch)
+            {
+                return BadRequest(new { error = "Current renderer does not support rendered pitch data." });
+            }
+
+            if (part.renderPhrases == null || part.renderPhrases.Count == 0)
+            {
+                return Ok(new
+                {
+                    partNo,
+                    partName = part.name,
+                    trackNo = part.trackNo,
+                    renderer = renderer.ToString(),
+                    phrases = new object[0]
+                });
+            }
+
+            var phrases = new List<object>();
+            foreach (var phrase in part.renderPhrases)
+            {
+                var pitch = renderer.LoadRenderedPitch(phrase);
+                if (pitch == null || pitch.ticks == null || pitch.tones == null)
+                {
+                    continue;
+                }
+
+                var points = pitch.ticks.Zip(pitch.tones, (tick, tone) => new
+                {
+                    relativeTick = tick,
+                    partTick = phrase.position - part.position + tick,
+                    absoluteTick = phrase.position + tick,
+                    tone = tone,
+                    frequencyHz = 440.0 * System.Math.Pow(2.0, (tone - 69.0) / 12.0)
+                }).ToArray();
+
+                phrases.Add(new
+                {
+                    phrasePosition = phrase.position,
+                    phraseDuration = phrase.duration,
+                    phraseLeading = phrase.leading,
+                    noteCount = phrase.notes.Length,
+                    notes = phrase.notes.Select(n => new
+                    {
+                        lyric = n.lyric,
+                        tone = n.tone,
+                        position = n.position,
+                        duration = n.duration,
+                        end = n.end
+                    }),
+                    points,
+                    pointCount = points.Length
+                });
+            }
+
+            return Ok(new
+            {
+                partNo,
+                partName = part.name,
+                trackNo = part.trackNo,
+                renderer = renderer.ToString(),
+                phraseCount = phrases.Count,
+                phrases
+            });
         }
     }
 }
