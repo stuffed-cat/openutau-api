@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using OpenUtau.Api.Controllers;
 using OpenUtau.Api.Security;
 using OpenUtau.Core;
@@ -20,7 +21,18 @@ namespace OpenUtau.Api.Tests
 
         public EventsControllerTests(WebApplicationFactory<Program> factory)
         {
-            _factory = factory;
+            _factory = factory.WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((_, config) =>
+                {
+                    config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["Auth:Enabled"] = "true",
+                        ["Auth:HeaderName"] = ApiKeyAuthenticationOptions.DefaultHeaderName,
+                        ["Auth:ApiKey"] = ApiKeyAuthenticationOptions.DefaultApiKey
+                    });
+                });
+            });
         }
 
         [Fact]

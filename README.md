@@ -25,6 +25,10 @@ This project attempts to provide a headless HTTP wrapper around the `OpenUtau.Co
     - `GET /api/renderers`: Show known renderers (e.g., `CLASSIC`, `VOGEN`, `ENUNU`).
     - `GET /api/singers`: Get exhaustive subbank information.
 
+## Deployment
+
+See [docs/deployment.md](docs/deployment.md) for runtime configuration, optional authentication, and deployment guidance.
+
 ### Next Steps
 1. Add custom parameters (pitch, expression values).
 2. Configure OpenUtau to natively resolve external resamplers by providing Linux/macOS paths via HTTP injection.

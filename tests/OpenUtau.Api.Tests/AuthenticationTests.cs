@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using OpenUtau.Api.Security;
 
 namespace OpenUtau.Api.Tests
@@ -14,24 +15,20 @@ namespace OpenUtau.Api.Tests
         }
 
         [Fact]
-        public async Task RequestWithoutApiKeyIsRejected()
+        public async Task RequestWithoutAuthConfigIsAllowed()
         {
             using var client = _factory.CreateClient();
-
-            var response = await client.GetAsync("/api/preferences");
-
-            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        }
-
-        [Fact]
-        public async Task RequestWithApiKeyIsAllowed()
-        {
-            using var client = _factory.CreateClient();
-            client.DefaultRequestHeaders.Add(ApiKeyAuthenticationOptions.DefaultHeaderName, ApiKeyAuthenticationOptions.DefaultApiKey);
 
             var response = await client.GetAsync("/api/preferences");
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        [Fact]
+        public void ApiKeyDefaultsAreDocumented()
+        {
+            Assert.Equal("X-Api-Key", ApiKeyAuthenticationOptions.DefaultHeaderName);
+            Assert.False(string.IsNullOrWhiteSpace(ApiKeyAuthenticationOptions.DefaultApiKey));
         }
     }
 }

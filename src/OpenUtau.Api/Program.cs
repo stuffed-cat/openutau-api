@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using OpenUtau.Core;
 using OpenUtau.Core.Util;
@@ -14,19 +13,24 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
-builder.Services.AddAuthentication(ApiKeyAuthenticationOptions.Scheme)
-    .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationOptions.Scheme, options =>
-    {
-        options.HeaderName = builder.Configuration["Auth:HeaderName"] ?? ApiKeyAuthenticationOptions.DefaultHeaderName;
-        options.ApiKey = builder.Configuration["Auth:ApiKey"] ?? ApiKeyAuthenticationOptions.DefaultApiKey;
-    });
-builder.Services.AddAuthorization(options =>
+
+var authEnabled = builder.Configuration.GetValue("Auth:Enabled", false);
+if (authEnabled)
 {
-    options.FallbackPolicy = new AuthorizationPolicyBuilder()
-        .AddAuthenticationSchemes(ApiKeyAuthenticationOptions.Scheme)
-        .RequireAuthenticatedUser()
-        .Build();
-});
+    builder.Services.AddAuthentication(ApiKeyAuthenticationOptions.Scheme)
+        .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationOptions.Scheme, options =>
+        {
+            options.HeaderName = builder.Configuration["Auth:HeaderName"] ?? ApiKeyAuthenticationOptions.DefaultHeaderName;
+            options.ApiKey = builder.Configuration["Auth:ApiKey"] ?? ApiKeyAuthenticationOptions.DefaultApiKey;
+        });
+    builder.Services.AddAuthorization(options =>
+    {
+        options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            .AddAuthenticationSchemes(ApiKeyAuthenticationOptions.Scheme)
+            .RequireAuthenticatedUser()
+            .Build();
+    });
+}
 
 var app = builder.Build();
 
@@ -55,8 +59,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
+if (authEnabled)
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
+}
 app.UseMiddleware<OpenUtau.Api.Middlewares.SessionMiddleware>();
 app.UseWebSockets();
 
