@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using OpenUtau.Api.Controllers;
+using OpenUtau.Api.Security;
 using OpenUtau.Core;
 
 namespace OpenUtau.Api.Tests
@@ -26,6 +27,7 @@ namespace OpenUtau.Api.Tests
         public async Task WebSocketEndpointSupportsPingPongAndEventPush()
         {
             var client = _factory.Server.CreateWebSocketClient();
+            client.ConfigureRequest = request => request.Headers.Add(ApiKeyAuthenticationOptions.DefaultHeaderName, ApiKeyAuthenticationOptions.DefaultApiKey);
             using var socket = await client.ConnectAsync(new Uri("ws://localhost/api/events/ws"), CancellationToken.None);
 
             var connected = await ReceiveJsonAsync(socket);
@@ -48,6 +50,7 @@ namespace OpenUtau.Api.Tests
         public async Task WebSocketBroadcastIsDeliveredToClients()
         {
             var client = _factory.Server.CreateWebSocketClient();
+            client.ConfigureRequest = request => request.Headers.Add(ApiKeyAuthenticationOptions.DefaultHeaderName, ApiKeyAuthenticationOptions.DefaultApiKey);
             using var socket = await client.ConnectAsync(new Uri("ws://localhost/api/events/ws"), CancellationToken.None);
 
             _ = await ReceiveJsonAsync(socket);
