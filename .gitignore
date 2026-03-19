@@ -428,8 +428,6 @@ FodyWeavers.xsd
 *.msp
 
 # --- OpenUtau Backend Custom ---
-/third_party/openutau/
-!/third_party/openutau/.git
 logs/
 *.wav
 *.mp3
