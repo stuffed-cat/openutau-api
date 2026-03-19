@@ -488,6 +488,41 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpPost("session/saveAs")]
+        public IActionResult SessionSaveAs([FromQuery] string targetPath)
+        {
+            if (DocManager.Inst.Project == null) return BadRequest("No project in session");
+            if (string.IsNullOrWhiteSpace(targetPath)) return BadRequest("targetPath required");
+
+            try
+            {
+                targetPath = Path.GetFullPath(targetPath);
+
+                var directory = Path.GetDirectoryName(targetPath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                if (!Path.GetExtension(targetPath).Equals(".ustx", StringComparison.OrdinalIgnoreCase))
+                {
+                    targetPath = Path.ChangeExtension(targetPath, ".ustx");
+                }
+
+                Ustx.Save(targetPath, DocManager.Inst.Project);
+
+                return Ok(new
+                {
+                    message = "Session project saved successfully.",
+                    path = targetPath
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
 
         public class CommandRequest
         {
