@@ -38,6 +38,76 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpGet("voicebank/{singerId}/validate")]
+        public IActionResult ValidateVoicebank(string singerId)
+        {
+            if (string.IsNullOrWhiteSpace(singerId)) return BadRequest("Missing singerId");
+
+            if (!SingerManager.Inst.Singers.TryGetValue(singerId, out var singer))
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            try
+            {
+                singer.EnsureLoaded();
+
+                var issues = new List<object>();
+                int missingAudioFiles = 0;
+                int invalidOtoEntries = 0;
+
+                foreach (var error in singer.Errors ?? Array.Empty<string>())
+                {
+                    if (string.IsNullOrWhiteSpace(error))
+                    {
+                        continue;
+                    }
+
+                    var type = error.IndexOf("Sound file missing", StringComparison.OrdinalIgnoreCase) >= 0
+                        ? "MissingAudio"
+                        : error.IndexOf("Failed to parse", StringComparison.OrdinalIgnoreCase) >= 0
+                            || error.IndexOf("Line does not match format", StringComparison.OrdinalIgnoreCase) >= 0
+                            ? "InvalidOto"
+                            : "VoicebankError";
+
+                    if (type == "MissingAudio")
+                    {
+                        missingAudioFiles++;
+                    }
+                    else if (type == "InvalidOto")
+                    {
+                        invalidOtoEntries++;
+                    }
+
+                    issues.Add(new
+                    {
+                        type,
+                        message = error
+                    });
+                }
+
+                return Ok(new
+                {
+                    singerId = singer.Id,
+                    singerName = singer.Name,
+                    singerType = singer.SingerType.ToString(),
+                    location = singer.Location,
+                    summary = new
+                    {
+                        totalOtos = singer.Otos.Count,
+                        issueCount = issues.Count,
+                        missingAudioFiles,
+                        invalidOtoEntries
+                    },
+                    issues
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpPost("detect-conflicts")]
         public IActionResult DetectConflicts(IFormFile file)
         {
