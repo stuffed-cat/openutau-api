@@ -3,6 +3,7 @@ using OpenUtau.Api.Controllers;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 using System.Linq;
+using System.Text.Json;
 using Xunit;
 
 namespace OpenUtau.Api.Tests
@@ -86,6 +87,83 @@ namespace OpenUtau.Api.Tests
             var badRequest = response as BadRequestObjectResult;
             Assert.NotNull(badRequest);
             Assert.Equal("No project in session", badRequest.Value);
+        }
+
+        [Fact]
+        public void SessionExecute_ChangeNoteLyric_ResolvesPartAndNote()
+        {
+            var part = new UVoicePart() { name = "ExecVoice", position = 0, trackNo = 0, duration = 960 };
+            var note = _project.CreateNote(60, 0, 480);
+            note.lyric = "a";
+            part.notes.Add(note);
+            _project.parts.Add(part);
+
+            var request = new ProjectManagementController.CommandRequest {
+                CommandType = "ChangeNoteLyricCommand",
+                Args = JsonSerializer.SerializeToElement(new {
+                    partIndex = 0,
+                    noteIndex = 0,
+                    newLyric = "la"
+                })
+            };
+
+            var response = _controller.SessionExecute(request) as OkObjectResult;
+
+            Assert.NotNull(response);
+            Assert.Equal("la", part.notes.First().lyric);
+        }
+
+        [Fact]
+        public void SessionExecute_MoveNote_ResolvesPartAndNote()
+        {
+            var part = new UVoicePart() { name = "ExecVoice", position = 0, trackNo = 0, duration = 960 };
+            var note = _project.CreateNote(60, 0, 480);
+            part.notes.Add(note);
+            _project.parts.Add(part);
+
+            var request = new ProjectManagementController.CommandRequest {
+                CommandType = "MoveNoteCommand",
+                Args = JsonSerializer.SerializeToElement(new {
+                    partNo = 0,
+                    noteIndex = 0,
+                    deltaPos = 120,
+                    deltaNoteNum = 1
+                })
+            };
+
+            var response = _controller.SessionExecute(request) as OkObjectResult;
+
+            Assert.NotNull(response);
+            var movedNote = part.notes.First();
+            Assert.Equal(120, movedNote.position);
+            Assert.Equal(61, movedNote.tone);
+        }
+
+        [Fact]
+        public void SessionExecute_AddNote_DeserializesNewNotePayload()
+        {
+            var part = new UVoicePart() { name = "ExecVoice", position = 0, trackNo = 0, duration = 960 };
+            _project.parts.Add(part);
+
+            var request = new ProjectManagementController.CommandRequest {
+                CommandType = "AddNoteCommand",
+                Args = JsonSerializer.SerializeToElement(new {
+                    partIndex = 0,
+                    note = new {
+                        position = 0,
+                        duration = 480,
+                        tone = 60,
+                        lyric = "la"
+                    }
+                })
+            };
+
+            var response = _controller.SessionExecute(request) as OkObjectResult;
+
+            Assert.NotNull(response);
+            Assert.Single(part.notes);
+            Assert.Equal("la", part.notes.First().lyric);
+            Assert.Equal(60, part.notes.First().tone);
         }
     }
 }

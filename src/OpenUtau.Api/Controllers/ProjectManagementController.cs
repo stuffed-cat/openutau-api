@@ -8,6 +8,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Text.Json;
 
 namespace OpenUtau.Api.Controllers
 {
@@ -537,6 +539,9 @@ namespace OpenUtau.Api.Controllers
         public IActionResult SessionExecute([FromBody] CommandRequest request)
         {
             if (DocManager.Inst.Project == null) return BadRequest("No project in session");
+            if (request == null || string.IsNullOrWhiteSpace(request.CommandType)) {
+                return BadRequest("Missing command type.");
+            }
             try
             {
                 var cmdType = typeof(UCommand).Assembly.GetTypes()
@@ -547,47 +552,17 @@ namespace OpenUtau.Api.Controllers
                     return BadRequest($"Command '{request.CommandType}' not found.");
                 }
 
-                // Simple reflection based constructor arguments mapping
                 var constructors = cmdType.GetConstructors();
                 if (constructors.Length == 0) return BadRequest("No valid constructors found.");
-                var constructor = constructors[0];
-                var parameters = constructor.GetParameters();
-                var argsList = new List<object>();
+                var constructor = constructors
+                    .Select(ctor => new { Ctor = ctor, Args = TryResolveConstructorArgs(DocManager.Inst.Project, request.Args, ctor) })
+                    .FirstOrDefault(x => x.Args.success);
 
-                foreach (var param in parameters)
-                {
-                    if (param.ParameterType == typeof(UProject))
-                    {
-                        argsList.Add(DocManager.Inst.Project);
-                        continue;
-                    }
-
-                    if (request.Args.ValueKind == System.Text.Json.JsonValueKind.Object && request.Args.TryGetProperty(param.Name, out var prop))
-                    {
-                        try {
-                            var val = System.Text.Json.JsonSerializer.Deserialize(prop.GetRawText(), param.ParameterType);
-                            argsList.Add(val);
-                        } catch {
-                            // If deserialize fails, provide a default if optional, else throw
-                            if (param.HasDefaultValue) argsList.Add(param.DefaultValue);
-                            else throw new ArgumentException($"Missing or invalid argument '{param.Name}'");
-                        }
-                    }
-                    else if (param.HasDefaultValue)
-                    {
-                        argsList.Add(param.DefaultValue);
-                    }
-                    else
-                    {
-                        // Some special handling for specific types if needed.
-                        // Throw missing param for primitive types that aren't optional
-                        if (param.ParameterType.IsPrimitive || param.ParameterType == typeof(string))
-                            throw new ArgumentException($"Missing required argument: {param.Name}");
-                        argsList.Add(null); // Just put null for objects, though it may fail later
-                    }
+                if (constructor == null) {
+                    return BadRequest("Unable to resolve command arguments.");
                 }
 
-                var cmdObj = constructor.Invoke(argsList.ToArray());
+                var cmdObj = constructor.Ctor.Invoke(constructor.Args.args);
                 
                 if (cmdObj is UCommand command)
                 {
@@ -603,6 +578,321 @@ namespace OpenUtau.Api.Controllers
             {
                 return StatusCode(500, new { error = ex.Message, stack = ex.StackTrace });
             }
+        }
+
+        private static (bool success, object[] args, string error) TryResolveConstructorArgs(UProject project, JsonElement requestArgs, ConstructorInfo constructor) {
+            var parameters = constructor.GetParameters();
+            var argsList = new object[parameters.Length];
+
+            for (var i = 0; i < parameters.Length; i++) {
+                if (!TryResolveArgument(project, requestArgs, parameters[i], out var value, out var error)) {
+                    return (false, Array.Empty<object>(), error);
+                }
+                argsList[i] = value;
+            }
+
+            return (true, argsList, string.Empty);
+        }
+
+        private static bool TryResolveArgument(UProject project, JsonElement requestArgs, ParameterInfo param, out object value, out string error) {
+            value = null;
+            error = string.Empty;
+
+            if (param.ParameterType == typeof(UProject)) {
+                value = project;
+                return true;
+            }
+
+            if (param.ParameterType == typeof(UTrack)) {
+                if (TryResolveTrack(project, requestArgs, param.Name, out var track, out error)) {
+                    value = track;
+                    return true;
+                }
+                return false;
+            }
+
+            if (param.ParameterType == typeof(UVoicePart) || param.ParameterType == typeof(UPart)) {
+                if (TryResolvePart(project, requestArgs, param.Name, out var part, out error)) {
+                    if (param.ParameterType.IsInstanceOfType(part)) {
+                        value = part;
+                        return true;
+                    }
+                    error = $"Part resolved for '{param.Name}' is not of type {param.ParameterType.Name}.";
+                }
+                return false;
+            }
+
+            if (param.ParameterType == typeof(UNote)) {
+                if (TryResolveNote(project, requestArgs, param.Name, out var note, out error)) {
+                    value = note;
+                    return true;
+                }
+                return false;
+            }
+
+            if (param.ParameterType == typeof(UNote[])) {
+                if (TryResolveNotes(project, requestArgs, out var notes, out error)) {
+                    value = notes;
+                    return true;
+                }
+                return false;
+            }
+
+            if (param.ParameterType == typeof(List<UNote>)) {
+                if (TryResolveNotes(project, requestArgs, out var notes, out error)) {
+                    value = notes.ToList();
+                    return true;
+                }
+                return false;
+            }
+
+            if (TryGetRequestValue(requestArgs, param.Name, out var prop)) {
+                try {
+                    value = JsonSerializer.Deserialize(prop.GetRawText(), param.ParameterType);
+                    return true;
+                } catch (Exception ex) {
+                    error = $"Missing or invalid argument '{param.Name}': {ex.Message}";
+                    return false;
+                }
+            }
+
+            if (param.HasDefaultValue) {
+                value = param.DefaultValue;
+                return true;
+            }
+
+            error = $"Missing required argument: {param.Name}";
+            return false;
+        }
+
+        private static bool TryResolveTrack(UProject project, JsonElement requestArgs, string paramName, out UTrack track, out string error) {
+            error = string.Empty;
+            track = null;
+
+            if (TryGetInt(requestArgs, "trackIndex", out var trackIndex) || TryGetInt(requestArgs, "trackNo", out trackIndex)) {
+                if (trackIndex < 0 || trackIndex >= project.tracks.Count) {
+                    error = $"Invalid track index: {trackIndex}";
+                    return false;
+                }
+                track = project.tracks[trackIndex];
+                return true;
+            }
+
+            if (TryGetRequestValue(requestArgs, paramName, out var nested) && nested.ValueKind == JsonValueKind.Object) {
+                if (TryGetInt(nested, "trackIndex", out trackIndex) || TryGetInt(nested, "trackNo", out trackIndex)) {
+                    if (trackIndex < 0 || trackIndex >= project.tracks.Count) {
+                        error = $"Invalid track index: {trackIndex}";
+                        return false;
+                    }
+                    track = project.tracks[trackIndex];
+                    return true;
+                }
+            }
+
+            error = $"Missing required track reference: {paramName}";
+            return false;
+        }
+
+        private static bool TryResolvePart(UProject project, JsonElement requestArgs, string paramName, out UVoicePart part, out string error) {
+            error = string.Empty;
+            part = null;
+
+            if (TryGetInt(requestArgs, "partIndex", out var partIndex) || TryGetInt(requestArgs, "partNo", out partIndex)) {
+                if (partIndex < 0 || partIndex >= project.parts.Count) {
+                    error = $"Invalid part index: {partIndex}";
+                    return false;
+                }
+
+                if (project.parts[partIndex] is not UVoicePart voicePart) {
+                    error = $"Part {partIndex} is not a voice part.";
+                    return false;
+                }
+
+                part = voicePart;
+                return true;
+            }
+
+            if (TryGetRequestValue(requestArgs, paramName, out var nested) && nested.ValueKind == JsonValueKind.Object) {
+                if (TryGetInt(nested, "partIndex", out partIndex) || TryGetInt(nested, "partNo", out partIndex)) {
+                    if (partIndex < 0 || partIndex >= project.parts.Count) {
+                        error = $"Invalid part index: {partIndex}";
+                        return false;
+                    }
+
+                    if (project.parts[partIndex] is not UVoicePart voicePart) {
+                        error = $"Part {partIndex} is not a voice part.";
+                        return false;
+                    }
+
+                    part = voicePart;
+                    return true;
+                }
+            }
+
+            error = $"Missing required part reference: {paramName}";
+            return false;
+        }
+
+        private static bool TryResolveNote(UProject project, JsonElement requestArgs, string paramName, out UNote note, out string error) {
+            error = string.Empty;
+            note = null;
+
+            if (TryGetRequestValue(requestArgs, paramName, out var nested) && nested.ValueKind == JsonValueKind.Object) {
+                if (!TryHasReferenceFields(nested) && TryDeserializeJson(nested, out UNote createdNote, out error)) {
+                    note = createdNote;
+                    return true;
+                }
+            }
+
+            if (TryGetRequestValue(requestArgs, "note", out var noteObject) && noteObject.ValueKind == JsonValueKind.Object && paramName != "note") {
+                if (!TryHasReferenceFields(noteObject) && TryDeserializeJson(noteObject, out UNote createdNote, out error)) {
+                    note = createdNote;
+                    return true;
+                }
+            }
+
+            if (!TryResolvePart(project, requestArgs, paramName, out var part, out error)) {
+                return false;
+            }
+
+            if (!TryGetInt(requestArgs, "noteIndex", out var noteIndex)) {
+                if (TryGetRequestValue(requestArgs, paramName, out var nested) && nested.ValueKind == JsonValueKind.Object) {
+                    if (!TryGetInt(nested, "noteIndex", out noteIndex)) {
+                        error = $"Missing required note index for '{paramName}'";
+                        return false;
+                    }
+                } else {
+                    error = $"Missing required note index for '{paramName}'";
+                    return false;
+                }
+            }
+
+            if (noteIndex < 0 || noteIndex >= part.notes.Count) {
+                error = $"Invalid note index: {noteIndex}";
+                return false;
+            }
+
+            note = part.notes.ElementAt(noteIndex);
+            return true;
+        }
+
+        private static bool TryResolveNotes(UProject project, JsonElement requestArgs, out UNote[] notes, out string error) {
+            error = string.Empty;
+            notes = Array.Empty<UNote>();
+
+            if (!TryResolvePart(project, requestArgs, "part", out var part, out error)) {
+                return false;
+            }
+
+            if (TryGetRequestValue(requestArgs, "notes", out var noteObjects) && noteObjects.ValueKind == JsonValueKind.Array) {
+                var createdNotes = new List<UNote>();
+                foreach (var item in noteObjects.EnumerateArray()) {
+                    if (item.ValueKind == JsonValueKind.Object && !TryHasReferenceFields(item)) {
+                        if (!TryDeserializeJson(item, out UNote createdNote, out error)) {
+                            return false;
+                        }
+                        createdNotes.Add(createdNote);
+                    } else if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var noteIndex)) {
+                        if (noteIndex < 0 || noteIndex >= part.notes.Count) {
+                            error = $"Invalid note index: {noteIndex}";
+                            return false;
+                        }
+                        createdNotes.Add(part.notes.ElementAt(noteIndex));
+                    } else {
+                        error = "Invalid notes array entry.";
+                        return false;
+                    }
+                }
+
+                notes = createdNotes.ToArray();
+                return true;
+            }
+
+            if (!TryGetIntArray(requestArgs, "noteIndices", out var noteIndices)) {
+                error = "Missing required noteIndices array.";
+                return false;
+            }
+
+            var resolved = new List<UNote>();
+            foreach (var noteIndex in noteIndices) {
+                if (noteIndex < 0 || noteIndex >= part.notes.Count) {
+                    error = $"Invalid note index: {noteIndex}";
+                    return false;
+                }
+                resolved.Add(part.notes.ElementAt(noteIndex));
+            }
+
+            notes = resolved.ToArray();
+            return true;
+        }
+
+        private static bool TryDeserializeJson<T>(JsonElement source, out T value, out string error) {
+            error = string.Empty;
+            value = default;
+
+            try {
+                value = JsonSerializer.Deserialize<T>(source.GetRawText());
+                return true;
+            } catch (Exception ex) {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static bool TryHasReferenceFields(JsonElement source) {
+            return source.ValueKind == JsonValueKind.Object && (
+                source.TryGetProperty("noteIndex", out _) ||
+                source.TryGetProperty("partIndex", out _) ||
+                source.TryGetProperty("partNo", out _) ||
+                source.TryGetProperty("trackIndex", out _) ||
+                source.TryGetProperty("trackNo", out _)
+            );
+        }
+
+        private static bool TryGetRequestValue(JsonElement source, string name, out JsonElement value) {
+            if (source.ValueKind == JsonValueKind.Object && source.TryGetProperty(name, out value)) {
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        private static bool TryGetInt(JsonElement source, string name, out int value) {
+            value = 0;
+            if (!TryGetRequestValue(source, name, out var prop)) {
+                return false;
+            }
+
+            switch (prop.ValueKind) {
+                case JsonValueKind.Number:
+                    return prop.TryGetInt32(out value);
+                case JsonValueKind.String:
+                    return int.TryParse(prop.GetString(), out value);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryGetIntArray(JsonElement source, string name, out int[] values) {
+            values = Array.Empty<int>();
+            if (!TryGetRequestValue(source, name, out var prop) || prop.ValueKind != JsonValueKind.Array) {
+                return false;
+            }
+
+            var list = new List<int>();
+            foreach (var item in prop.EnumerateArray()) {
+                if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var value)) {
+                    list.Add(value);
+                } else if (item.ValueKind == JsonValueKind.String && int.TryParse(item.GetString(), out value)) {
+                    list.Add(value);
+                } else {
+                    return false;
+                }
+            }
+
+            values = list.ToArray();
+            return true;
         }
 
 
