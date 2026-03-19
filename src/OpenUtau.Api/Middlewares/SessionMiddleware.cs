@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using OpenUtau.Api.Services;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenUtau.Api.Middlewares
@@ -8,8 +7,6 @@ namespace OpenUtau.Api.Middlewares
     public class SessionMiddleware
     {
         private readonly RequestDelegate _next;
-        // Global lock to serialize requests and protect OpenUTAU DocManager's single active project state
-        private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
         public SessionMiddleware(RequestDelegate next)
         {
@@ -52,9 +49,10 @@ namespace OpenUtau.Api.Middlewares
                     sessionId = context.Request.Query["sessionId"].ToString();
                 }
 
-                // Acquire the lock: this ensures only ONE API request is processed at any given time,
-                // securely protecting the state of the globally shared DocManager.Inst.
-                await _semaphore.WaitAsync();
+                // Acquire a session-scoped lock so requests for different sessions can proceed in parallel.
+                // Requests without a session id fall back to a shared global lock.
+                var gate = SessionLockProvider.GetLock(sessionId);
+                await gate.WaitAsync();
                 try
                 {
                     if (!string.IsNullOrEmpty(sessionId))
@@ -66,7 +64,7 @@ namespace OpenUtau.Api.Middlewares
                 }
                 finally
                 {
-                    _semaphore.Release();
+                    gate.Release();
                 }
             }
             else
