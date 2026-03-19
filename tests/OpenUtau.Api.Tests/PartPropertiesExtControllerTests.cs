@@ -117,6 +117,60 @@ namespace OpenUtau.Api.Tests
         }
 
         [Fact]
+        public void SplitNote_AbsoluteTick_ShouldSplitInsideNote()
+        {
+            var project = DocManager.Inst.Project;
+            var part = project.parts[0] as UVoicePart;
+            Assert.NotNull(part);
+
+            part.position = 480;
+
+            // Absolute tick 720 falls inside the first note (relative tick 240).
+            var result = _controller.SplitNote(0, 0, 720, absolute: true);
+
+            var okResult = Assert.IsType<OkObjectResult>(result);
+
+            Assert.Equal(5, part.notes.Count);
+            var first = part.notes.ElementAt(0);
+            var second = part.notes.ElementAt(1);
+
+            Assert.Equal(0, first.position);
+            Assert.Equal(240, first.duration);
+            Assert.Equal(240, second.position);
+            Assert.Equal(240, second.duration);
+            Assert.Equal(NotePresets.Default.SplittedLyric ?? "-", second.lyric);
+        }
+
+        [Fact]
+        public void SplitNote_ShouldBeUndoable()
+        {
+            var project = DocManager.Inst.Project;
+            var part = project.parts[0] as UVoicePart;
+            var originalCount = part.notes.Count;
+
+            var result = _controller.SplitNote(0, 0, 240);
+            var okResult = Assert.IsType<OkObjectResult>(result);
+
+            Assert.Equal(originalCount + 1, part.notes.Count);
+
+            DocManager.Inst.Undo();
+
+            Assert.Equal(originalCount, part.notes.Count);
+            var note = part.notes.First();
+            Assert.Equal(0, note.position);
+            Assert.Equal(480, note.duration);
+        }
+
+        [Fact]
+        public void SplitNote_InvalidTick_ShouldReturnBadRequest()
+        {
+            var result = _controller.SplitNote(0, 0, 0);
+
+            var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Contains("Split position must be within the note's duration", badRequest.Value.ToString());
+        }
+
+        [Fact]
         public void MergeParts_ValidIndexes_ShouldMergeIntoOnePart()
         {
             // Add a second part adjacent to the first

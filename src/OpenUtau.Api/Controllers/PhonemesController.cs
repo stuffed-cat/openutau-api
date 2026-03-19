@@ -97,6 +97,25 @@ namespace OpenUtau.Api.Controllers
             return Ok(new { message = $"Phoneme {phoneIndex} overlap delta set to {delta}" });
         }
 
+        [HttpPost("phonemes/{phoneIndex}/alias")]
+        public IActionResult SetPhonemeAlias(int partNo, int noteIndex, int phoneIndex, [FromQuery] string? alias)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
+
+            if (project.parts[partNo] is not UVoicePart part) return BadRequest("Not a voice part");
+            if (noteIndex < 0 || noteIndex >= part.notes.Count) return BadRequest("Invalid noteIndex");
+
+            var note = part.notes.ElementAt(noteIndex);
+
+            DocManager.Inst.StartUndoGroup("Set Phoneme Alias");
+            DocManager.Inst.ExecuteCmd(new ChangePhonemeAliasCommand(part, note, phoneIndex, alias));
+            DocManager.Inst.EndUndoGroup();
+
+            return Ok(new { message = $"Phoneme {phoneIndex} alias set to {alias ?? string.Empty}" });
+        }
+
         [HttpPost("tuning")]
         public IActionResult SetNoteTuning(int partNo, int noteIndex, [FromQuery] int tuning)
         {
