@@ -756,8 +756,8 @@ namespace OpenUtau.Api.Controllers
             }
 
             if (!TryGetInt(requestArgs, "noteIndex", out var noteIndex)) {
-                if (TryGetRequestValue(requestArgs, paramName, out var nested) && nested.ValueKind == JsonValueKind.Object) {
-                    if (!TryGetInt(nested, "noteIndex", out noteIndex)) {
+                if (TryGetRequestValue(requestArgs, paramName, out var nestedNote) && nestedNote.ValueKind == JsonValueKind.Object) {
+                    if (!TryGetInt(nestedNote, "noteIndex", out noteIndex)) {
                         error = $"Missing required note index for '{paramName}'";
                         return false;
                     }

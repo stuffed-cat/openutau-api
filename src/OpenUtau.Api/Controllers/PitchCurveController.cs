@@ -12,6 +12,11 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project")]
     public class PitchCurveController : ControllerBase
     {
+        public class BakePitchRequest
+        {
+            public List<int>? NoteIndexes { get; set; }
+        }
+
         [HttpGet("note/{partNo}/{noteIndex}/pitch/points")]
         public IActionResult GetPitchCurve(int partNo, int noteIndex)
         {
@@ -189,6 +194,92 @@ namespace OpenUtau.Api.Controllers
             DocManager.Inst.EndUndoGroup();
 
             return Ok(new { message = "Pitch synchronization across part completed" });
+        }
+
+        [HttpPost("part/{partNo}/pitch/bake")]
+        public IActionResult BakePitch(int partNo, [FromBody] BakePitchRequest? request = null)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid partNo");
+
+            if (project.parts[partNo] is not UVoicePart part) return BadRequest("Not a voice part");
+
+            var track = project.tracks.ElementAtOrDefault(part.trackNo);
+            if (track == null) return BadRequest("Track not found");
+
+            if (part.renderPhrases == null || part.renderPhrases.Count == 0)
+            {
+                project.ValidateFull();
+            }
+
+            if ((part.renderPhrases == null || part.renderPhrases.Count == 0) && part.phonemes.Count > 0)
+            {
+                part.renderPhrases = RenderPhrase.FromPart(project, track, part);
+            }
+
+            if (part.renderPhrases == null || part.renderPhrases.Count == 0)
+            {
+                return BadRequest(new { error = "Pitch baking requires rendered phrases. Load or validate the part first." });
+            }
+
+            var notes = ResolveNotesForBaking(part, request, out var selectionError);
+            if (selectionError != null)
+            {
+                return BadRequest(new { error = selectionError });
+            }
+
+            if (notes.Count == 0)
+            {
+                return BadRequest(new { error = "No notes available for pitch baking." });
+            }
+
+            var bakePitch = new BakePitch();
+            bakePitch.Run(project, part, notes, DocManager.Inst);
+
+            return Ok(new
+            {
+                message = "Pitch baking completed",
+                bakedNoteCount = notes.Count,
+                renderPhraseCount = part.renderPhrases.Count
+            });
+        }
+
+        private static List<UNote> ResolveNotesForBaking(UVoicePart part, BakePitchRequest? request, out string? selectionError)
+        {
+            selectionError = null;
+            var notes = part.notes.ToList();
+            if (request?.NoteIndexes != null)
+            {
+                if (request.NoteIndexes.Count == 0)
+                {
+                    selectionError = "noteIndexes cannot be empty.";
+                    return new List<UNote>();
+                }
+
+                var selectedNotes = new List<UNote>();
+                foreach (var noteIndex in request.NoteIndexes)
+                {
+                    if (noteIndex < 0 || noteIndex >= notes.Count)
+                    {
+                        selectionError = $"Invalid noteIndex: {noteIndex}";
+                        return new List<UNote>();
+                    }
+                    selectedNotes.Add(notes[noteIndex]);
+                }
+                return selectedNotes;
+            }
+
+            if (SelectionManager.Current.PartTrackNo == part.trackNo && SelectionManager.Current.PartPosition == part.position)
+            {
+                var selected = SelectionManager.GetSelectedNotes(part);
+                if (selected.Count > 0)
+                {
+                    return selected;
+                }
+            }
+
+            return notes;
         }
 
         [HttpGet("part/{partNo}/pitch/rendered")]

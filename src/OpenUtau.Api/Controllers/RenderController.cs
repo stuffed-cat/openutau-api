@@ -131,8 +131,7 @@ namespace OpenUtau.Api.Controllers
                     renderResult = await Task.Run(() => engine.RenderMixdown(
                         DocManager.Inst.MainScheduler,
                         ref tokenSource,
-                        true,
-                        (progress, info) => RenderProgressMonitor.Instance.ReportProgress(progress, info)));
+                        true));
                 } finally {
                     _activeRenders.TryRemove(taskId, out _);
                     tokenSource.Dispose();
@@ -210,8 +209,7 @@ namespace OpenUtau.Api.Controllers
                     renderResult = await Task.Run(() => engine.RenderMixdown(
                         DocManager.Inst.MainScheduler,
                         ref tokenSource,
-                        true,
-                        (progress, info) => RenderProgressMonitor.Instance.ReportProgress(progress, info)));
+                        true));
                 } finally {
                     _activeRenders.TryRemove(taskId, out _);
                     tokenSource.Dispose();
