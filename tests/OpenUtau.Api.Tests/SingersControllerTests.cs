@@ -291,5 +291,61 @@ namespace OpenUtau.Api.Tests
                 RemoveEditableSinger(singerId, baseDir);
             }
         }
+
+        [Fact]
+        public void EditSinger_UpdatesCharacterMetadataFiles()
+        {
+            try
+            {
+                var result = _controller.EditSinger(_singerId, new SingersController.SingerEditRequest
+                {
+                    Name = "Updated Singer",
+                    Author = "Updated Author",
+                    Voice = "Updated Voice",
+                    Web = "https://example.com",
+                    Version = "2.0",
+                    Sample = "sample.wav",
+                    SingerType = "classic",
+                    DefaultPhonemizer = "JapaneseCVVC",
+                    TextFileEncoding = "utf-8",
+                    UseFilenameAsAlias = true
+                });
+
+                Assert.IsType<OkObjectResult>(result);
+
+                var txtPath = Path.Combine(_singerDir, "character.txt");
+                var yamlPath = Path.Combine(_singerDir, "character.yaml");
+                Assert.True(File.Exists(txtPath));
+                Assert.True(File.Exists(yamlPath));
+
+                var txt = File.ReadAllText(txtPath, System.Text.Encoding.UTF8);
+                Assert.Contains("name=Updated Singer", txt);
+                Assert.Contains("author=Updated Author", txt);
+                Assert.Contains("voice=Updated Voice", txt);
+                Assert.Contains("web=https://example.com", txt);
+                Assert.Contains("version=2.0", txt);
+                Assert.Contains("sample=sample.wav", txt);
+
+                using var stream = File.OpenRead(yamlPath);
+                var config = VoicebankConfig.Load(stream);
+                Assert.Equal("Updated Singer", config.Name);
+                Assert.Equal("Updated Author", config.Author);
+                Assert.Equal("Updated Voice", config.Voice);
+                Assert.Equal("https://example.com", config.Web);
+                Assert.Equal("2.0", config.Version);
+                Assert.Equal("sample.wav", config.Sample);
+                Assert.Equal("JapaneseCVVC", config.DefaultPhonemizer);
+                Assert.True(config.UseFilenameAsAlias);
+
+                var singer = (ClassicSinger)SingerManager.Inst.Singers[_singerId];
+                Assert.Equal("Updated Singer", singer.Name);
+                Assert.Equal("Updated Author", singer.Author);
+                Assert.Equal("JapaneseCVVC", singer.DefaultPhonemizer);
+            }
+            finally
+            {
+                // no-op, cleanup handled in Dispose
+            }
+        }
     }
 }

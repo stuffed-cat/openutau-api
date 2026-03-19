@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using OpenUtau.Core;
 using OpenUtau.Classic;
 using System.Linq;
+using System.Text;
 
 namespace OpenUtau.Api.Controllers
 {
@@ -358,6 +361,12 @@ namespace OpenUtau.Api.Controllers
 
         public class SingerEditRequest
         {
+            public string? Name { get; set; }
+            public string? Author { get; set; }
+            public string? Voice { get; set; }
+            public string? Web { get; set; }
+            public string? Version { get; set; }
+            public string? Sample { get; set; }
             public string? TextFileEncoding { get; set; }
             public string? Image { get; set; }
             public string? Portrait { get; set; }
@@ -385,6 +394,66 @@ namespace OpenUtau.Api.Controllers
             public List<OtoEdit>? OtoEdits { get; set; }
         }
 
+        private static void ApplyCharacterTxtMetadata(string txtPath, VoicebankConfig config)
+        {
+            var lines = new List<string>();
+            if (System.IO.File.Exists(txtPath))
+            {
+                lines.AddRange(System.IO.File.ReadAllLines(txtPath, Encoding.UTF8));
+            }
+
+            var knownKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "name", "author", "created by", "voice", "sample", "web", "version", "image"
+            };
+
+            string? ParseValue(string line, out string key)
+            {
+                key = string.Empty;
+                var separators = new[] { '=', ':', '：' };
+                foreach (var sep in separators)
+                {
+                    var index = line.IndexOf(sep);
+                    if (index > 0)
+                    {
+                        key = line.Substring(0, index).Trim();
+                        return line.Substring(index + 1).Trim();
+                    }
+                }
+                return null;
+            }
+
+            var output = new List<string>();
+            foreach (var line in lines)
+            {
+                var parsed = ParseValue(line, out var key);
+                if (parsed != null && knownKeys.Contains(key))
+                {
+                    continue;
+                }
+                output.Add(line);
+            }
+
+            void AddOrUpdate(string key, string? value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+                output.Add($"{key}={value}");
+            }
+
+            AddOrUpdate("name", config.Name);
+            AddOrUpdate("author", config.Author);
+            AddOrUpdate("voice", config.Voice);
+            AddOrUpdate("sample", config.Sample);
+            AddOrUpdate("web", config.Web);
+            AddOrUpdate("version", config.Version);
+            AddOrUpdate("image", config.Image);
+
+            System.IO.File.WriteAllLines(txtPath, output, Encoding.UTF8);
+        }
+
         [HttpPut("{id}/otos")]
         public IActionResult UpdateSingerOtos(string id, [FromBody] OtoEditRequest request)
         {
@@ -392,6 +461,11 @@ namespace OpenUtau.Api.Controllers
             if (singer == null)
             {
                 return NotFound(new { error = "Classic Singer not found" });
+            }
+
+            if (request == null)
+            {
+                return BadRequest(new { error = "Request body is required" });
             }
 
             if (request?.OtoEdits == null || request.OtoEdits.Count == 0)
@@ -463,6 +537,7 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpPost("{id}/edit")]
+        [HttpPut("{id}/metadata")]
         public IActionResult EditSinger(string id, [FromBody] SingerEditRequest request)
         {
             var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id) as OpenUtau.Classic.ClassicSinger;
@@ -471,7 +546,13 @@ namespace OpenUtau.Api.Controllers
                 return NotFound(new { error = "Classic Singer not found" });
             }
 
+            if (request == null)
+            {
+                return BadRequest(new { error = "Request body is required" });
+            }
+
             var yamlFile = System.IO.Path.Combine(singer.Location, "character.yaml");
+            var txtFile = System.IO.Path.Combine(singer.Location, "character.txt");
             OpenUtau.Classic.VoicebankConfig? config = null;
             if (System.IO.File.Exists(yamlFile))
             {
@@ -482,6 +563,12 @@ namespace OpenUtau.Api.Controllers
             }
             if (config == null) config = new OpenUtau.Classic.VoicebankConfig();
 
+            if (request.Name != null) config.Name = request.Name;
+            if (request.Author != null) config.Author = request.Author;
+            if (request.Voice != null) config.Voice = request.Voice;
+            if (request.Web != null) config.Web = request.Web;
+            if (request.Version != null) config.Version = request.Version;
+            if (request.Sample != null) config.Sample = request.Sample;
             if (request.TextFileEncoding != null) config.TextFileEncoding = request.TextFileEncoding;
             if (request.Image != null) config.Image = request.Image;
             if (request.Portrait != null) config.Portrait = request.Portrait;
@@ -493,6 +580,8 @@ namespace OpenUtau.Api.Controllers
             {
                 config.Save(stream);
             }
+
+            ApplyCharacterTxtMetadata(txtFile, config);
 
             if (request.OtoEdits != null && request.OtoEdits.Count > 0)
             {
