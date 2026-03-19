@@ -657,6 +657,419 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        // ==================== 表情曲线绘制工具 ====================
+
+        public class LinearCurveRequest
+        {
+            public int StartX { get; set; }      // 起始时间位置
+            public int EndX { get; set; }        // 结束时间位置
+            public int StartY { get; set; }      // 起始值
+            public int EndY { get; set; }        // 结束值
+            public int Interval { get; set; } = 5;  // x轴间隔（默认5）
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}/linear")]
+        public IActionResult DrawLinearCurve(int partNo, string abbr, [FromBody] LinearCurveRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var xs = new List<int>();
+                var ys = new List<int>();
+
+                // 线性插值从 StartX 到 EndX，间隔为 Interval
+                if (request.StartX > request.EndX)
+                    (request.StartX, request.EndX) = (request.EndX, request.StartX);
+
+                int steps = (request.EndX - request.StartX) / request.Interval + 1;
+                for (int i = 0; i < steps; i++)
+                {
+                    int x = request.StartX + i * request.Interval;
+                    if (x > request.EndX) x = request.EndX;
+
+                    // 线性插值公式
+                    double t = (request.EndX > request.StartX) 
+                        ? (double)(x - request.StartX) / (request.EndX - request.StartX) 
+                        : 0;
+                    int y = (int)System.Math.Round(request.StartY + (request.EndY - request.StartY) * t);
+
+                    xs.Add(x);
+                    ys.Add(y);
+                }
+
+                return ApplyCurveCommand(project, part, abbr, xs.ToArray(), ys.ToArray(), "linear");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class BezierCurveRequest
+        {
+            public int StartX { get; set; }
+            public int EndX { get; set; }
+            public int StartY { get; set; }
+            public int EndY { get; set; }
+            public int ControlY1 { get; set; }   // 第一个控制点Y值
+            public int ControlY2 { get; set; }   // 第二个控制点Y值
+            public int Interval { get; set; } = 5;
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}/bezier")]
+        public IActionResult DrawBezierCurve(int partNo, string abbr, [FromBody] BezierCurveRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var xs = new List<int>();
+                var ys = new List<int>();
+
+                if (request.StartX > request.EndX)
+                    (request.StartX, request.EndX) = (request.EndX, request.StartX);
+
+                int steps = (request.EndX - request.StartX) / request.Interval + 1;
+                for (int i = 0; i < steps; i++)
+                {
+                    int x = request.StartX + i * request.Interval;
+                    if (x > request.EndX) x = request.EndX;
+
+                    // 三次贝塞尔曲线插值
+                    double t = (request.EndX > request.StartX)
+                        ? (double)(x - request.StartX) / (request.EndX - request.StartX)
+                        : 0;
+
+                    double mt = 1 - t;
+                    double y = mt * mt * mt * request.StartY
+                        + 3 * mt * mt * t * request.ControlY1
+                        + 3 * mt * t * t * request.ControlY2
+                        + t * t * t * request.EndY;
+
+                    xs.Add(x);
+                    ys.Add((int)System.Math.Round(y));
+                }
+
+                return ApplyCurveCommand(project, part, abbr, xs.ToArray(), ys.ToArray(), "bezier");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class RampCurveRequest
+        {
+            public int StartX { get; set; }
+            public int EndX { get; set; }
+            public int StartValue { get; set; }
+            public int EndValue { get; set; }
+            public string Shape { get; set; } = "linear";  // "linear", "exponential", "logarithmic"
+            public int Interval { get; set; } = 5;
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}/ramp")]
+        public IActionResult DrawRampCurve(int partNo, string abbr, [FromBody] RampCurveRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var xs = new List<int>();
+                var ys = new List<int>();
+
+                if (request.StartX > request.EndX)
+                    (request.StartX, request.EndX) = (request.EndX, request.StartX);
+
+                int steps = (request.EndX - request.StartX) / request.Interval + 1;
+                for (int i = 0; i < steps; i++)
+                {
+                    int x = request.StartX + i * request.Interval;
+                    if (x > request.EndX) x = request.EndX;
+
+                    double t = (request.EndX > request.StartX)
+                        ? (double)(x - request.StartX) / (request.EndX - request.StartX)
+                        : 0;
+
+                    double y = request.Shape switch
+                    {
+                        "exponential" => request.StartValue + (request.EndValue - request.StartValue) * (System.Math.Exp(t) - 1) / (System.Math.E - 1),
+                        "logarithmic" => request.StartValue + (request.EndValue - request.StartValue) * System.Math.Log(1 + t * (System.Math.E - 1)) / System.Math.Log(System.Math.E),
+                        _ => request.StartValue + (request.EndValue - request.StartValue) * t // linear
+                    };
+
+                    xs.Add(x);
+                    ys.Add((int)System.Math.Round(y));
+                }
+
+                return ApplyCurveCommand(project, part, abbr, xs.ToArray(), ys.ToArray(), "ramp");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class NoiseRequest
+        {
+            public int StartX { get; set; }
+            public int EndX { get; set; }
+            public int BaseValue { get; set; }     // 基础值
+            public int NoiseAmount { get; set; }   // 噪声幅度
+            public int Interval { get; set; } = 5;
+            public int RandomSeed { get; set; } = -1;  // -1表示使用随机种子
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}/noise")]
+        public IActionResult DrawNoiseCurve(int partNo, string abbr, [FromBody] NoiseRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var xs = new List<int>();
+                var ys = new List<int>();
+
+                if (request.StartX > request.EndX)
+                    (request.StartX, request.EndX) = (request.EndX, request.StartX);
+
+                var random = request.RandomSeed >= 0 
+                    ? new System.Random(request.RandomSeed) 
+                    : new System.Random();
+
+                int steps = (request.EndX - request.StartX) / request.Interval + 1;
+                for (int i = 0; i < steps; i++)
+                {
+                    int x = request.StartX + i * request.Interval;
+                    if (x > request.EndX) x = request.EndX;
+
+                    // 添加随机噪声
+                    int noise = random.Next(-request.NoiseAmount, request.NoiseAmount + 1);
+                    int y = request.BaseValue + noise;
+
+                    xs.Add(x);
+                    ys.Add(y);
+                }
+
+                return ApplyCurveCommand(project, part, abbr, xs.ToArray(), ys.ToArray(), "noise");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class SmoothCurveRequest
+        {
+            public int WindowSize { get; set; } = 3;  // 平滑窗口大小（必须为奇数）
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}/smooth")]
+        public IActionResult SmoothCurve(int partNo, string abbr, [FromBody] SmoothCurveRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var curve = part.curves.FirstOrDefault(c => c.abbr == abbr);
+                if (curve == null || curve.xs.Count == 0)
+                    return BadRequest("Curve not found or is empty");
+
+                if (request.WindowSize < 1 || request.WindowSize % 2 == 0)
+                    return BadRequest("Window size must be a positive odd number");
+
+                var xs = curve.xs.ToList();
+                var ys = curve.ys.ToList();
+                var smoothedYs = new List<int>();
+
+                int halfWindow = request.WindowSize / 2;
+
+                for (int i = 0; i < ys.Count; i++)
+                {
+                    int start = System.Math.Max(0, i - halfWindow);
+                    int end = System.Math.Min(ys.Count - 1, i + halfWindow);
+                    
+                    double sum = 0;
+                    int count = 0;
+                    for (int j = start; j <= end; j++)
+                    {
+                        sum += ys[j];
+                        count++;
+                    }
+                    
+                    smoothedYs.Add((int)System.Math.Round(sum / count));
+                }
+
+                return ApplyCurveCommand(project, part, abbr, xs.ToArray(), smoothedYs.ToArray(), "smooth");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class ScaleCurveRequest
+        {
+            public double ScaleY { get; set; } = 1.0;  // Y轴缩放倍数
+            public int MinY { get; set; } = int.MinValue;  // 最小Y值限制
+            public int MaxY { get; set; } = int.MaxValue;  // 最大Y值限制
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}/scale")]
+        public IActionResult ScaleCurve(int partNo, string abbr, [FromBody] ScaleCurveRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var curve = part.curves.FirstOrDefault(c => c.abbr == abbr);
+                if (curve == null || curve.xs.Count == 0)
+                    return BadRequest("Curve not found or is empty");
+
+                var xs = curve.xs.ToList();
+                var scaledYs = curve.ys
+                    .Select(y => (int)System.Math.Round(y * request.ScaleY))
+                    .Select(y => System.Math.Min(request.MaxY, System.Math.Max(request.MinY, y)))
+                    .ToList();
+
+                return ApplyCurveCommand(project, part, abbr, xs.ToArray(), scaledYs.ToArray(), "scale");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class OffsetCurveRequest
+        {
+            public int OffsetY { get; set; }  // Y轴偏移值
+            public int MinY { get; set; } = int.MinValue;
+            public int MaxY { get; set; } = int.MaxValue;
+        }
+
+        [HttpPost("{partNo}/curves/{abbr}/offset")]
+        public IActionResult OffsetCurve(int partNo, string abbr, [FromBody] OffsetCurveRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var curve = part.curves.FirstOrDefault(c => c.abbr == abbr);
+                if (curve == null || curve.xs.Count == 0)
+                    return BadRequest("Curve not found or is empty");
+
+                var xs = curve.xs.ToList();
+                var offsetYs = curve.ys
+                    .Select(y => y + request.OffsetY)
+                    .Select(y => System.Math.Min(request.MaxY, System.Math.Max(request.MinY, y)))
+                    .ToList();
+
+                return ApplyCurveCommand(project, part, abbr, xs.ToArray(), offsetYs.ToArray(), "offset");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpDelete("{partNo}/curves/{abbr}")]
+        public IActionResult ClearCurve(int partNo, string abbr)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+            if (partNo < 0 || partNo >= project.parts.Count) return BadRequest("Invalid part index");
+
+            var partBase = project.parts[partNo];
+            if (!(partBase is UVoicePart part)) return BadRequest("Not a voice part");
+
+            try
+            {
+                var curve = part.curves.FirstOrDefault(c => c.abbr == abbr);
+                if (curve == null)
+                    return NotFound("Curve not found");
+
+                DocManager.Inst.StartUndoGroup("command.part.edit", true);
+                DocManager.Inst.ExecuteCmd(new MergedSetCurveCommand(project, part, abbr, 
+                    curve.xs.ToArray(), curve.ys.ToArray(), 
+                    new int[0], new int[0]));
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { message = $"Curve {abbr} cleared successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        // 辅助方法：应用曲线命令
+        private IActionResult ApplyCurveCommand(UProject project, UVoicePart part, string abbr, int[] xs, int[] ys, string operation)
+        {
+            if (xs == null || ys == null || xs.Length != ys.Length)
+                return BadRequest("Invalid curve data");
+
+            var curve = part.curves.FirstOrDefault(c => c.abbr == abbr);
+            int[] oldXs = curve?.xs.ToArray() ?? new int[0];
+            int[] oldYs = curve?.ys.ToArray() ?? new int[0];
+
+            if (curve == null)
+            {
+                if (!project.expressions.ContainsKey(abbr))
+                {
+                    project.expressions.Add(abbr, new UExpressionDescriptor(abbr, abbr, -1000, 1000, 0) 
+                    { 
+                        type = UExpressionType.Curve 
+                    });
+                }
+            }
+
+            DocManager.Inst.StartUndoGroup($"command.part.curve.{operation}", true);
+            DocManager.Inst.ExecuteCmd(new MergedSetCurveCommand(project, part, abbr, oldXs, oldYs, xs, ys));
+            DocManager.Inst.EndUndoGroup();
+
+            return Ok(new { 
+                message = $"Curve {abbr} {operation} applied successfully", 
+                pointCount = xs.Length 
+            });
+        }
+
 
     }
 }
+
