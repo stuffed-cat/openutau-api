@@ -298,6 +298,64 @@ namespace OpenUtau.Api.Controllers
             return Ok(new { message = "Dictionary deleted successfully" });
         }
 
+        [HttpGet("{id}/prefix-map")]
+        public IActionResult GetSingerPrefixMap(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id) as ClassicSinger;
+            if (singer == null)
+            {
+                return NotFound(new { error = "Classic Singer not found" });
+            }
+
+            var mapPath = Path.Combine(singer.Location, "prefix.map");
+            if (!System.IO.File.Exists(mapPath))
+            {
+                return NotFound(new { error = "Prefix map not found" });
+            }
+
+            return Content(System.IO.File.ReadAllText(mapPath, singer.TextFileEncoding), "text/plain");
+        }
+
+        public class PrefixMapRequest
+        {
+            public string Content { get; set; } = string.Empty;
+        }
+
+        [HttpPost("{id}/prefix-map")]
+        public IActionResult SaveSingerPrefixMap(string id, [FromBody] PrefixMapRequest request)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id) as ClassicSinger;
+            if (singer == null)
+            {
+                return NotFound(new { error = "Classic Singer not found" });
+            }
+
+            var mapPath = Path.Combine(singer.Location, "prefix.map");
+            System.IO.File.WriteAllText(mapPath, request.Content, singer.TextFileEncoding);
+            singer.Reload();
+
+            return Ok(new { message = "Prefix map saved successfully" });
+        }
+
+        [HttpDelete("{id}/prefix-map")]
+        public IActionResult DeleteSingerPrefixMap(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id) as ClassicSinger;
+            if (singer == null)
+            {
+                return NotFound(new { error = "Classic Singer not found" });
+            }
+
+            var mapPath = Path.Combine(singer.Location, "prefix.map");
+            if (System.IO.File.Exists(mapPath))
+            {
+                System.IO.File.Delete(mapPath);
+            }
+            singer.Reload();
+
+            return Ok(new { message = "Prefix map deleted successfully" });
+        }
+
         public class SingerEditRequest
         {
             public string? TextFileEncoding { get; set; }
