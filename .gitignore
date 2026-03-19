@@ -437,3 +437,4 @@ logs/
 dotnet-install.sh
 
 tests/OpenUtau.Api.Tests/CoverageReport
+*.py

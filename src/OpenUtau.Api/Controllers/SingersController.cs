@@ -86,6 +86,45 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteSinger(string id)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
+            if (singer == null)
+            {
+                return NotFound(new { error = "Singer not found" });
+            }
+
+            try
+            {
+                // 首先尝试使用 PackageManager 卸载（如果是通过包管理器安装的）
+                var installed = await PackageManager.Inst.GetInstalledAsync();
+                var package = installed.FirstOrDefault(p => p.id == id);
+                
+                if (package != null)
+                {
+                    // 这是一个通过包管理器安装的包
+                    await PackageManager.Inst.UninstallAsync(id);
+                }
+                else
+                {
+                    // 这是本地安装的歌手，直接删除文件夹
+                    if (!string.IsNullOrEmpty(singer.Location) && System.IO.Directory.Exists(singer.Location))
+                    {
+                        System.IO.Directory.Delete(singer.Location, true);
+                    }
+                }
+                
+                // 重新扫描所有歌手
+                SingerManager.Inst.SearchAllSingers();
+                return Ok(new { message = "Singer deleted successfully" });
+            }
+            catch (System.Exception e)
+            {
+                return BadRequest(new { error = $"Failed to delete singer: {e.Message}" });
+            }
+        }
+
         [HttpGet("{id}/image")]
         public IActionResult GetSingerImage(string id)
         {
