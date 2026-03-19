@@ -6,6 +6,9 @@ using OpenUtau.Core.Ustx;
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Text.Json;
 
 namespace OpenUtau.Api.Controllers
 {
@@ -148,6 +151,82 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        [HttpGet("{trackIndex}/phonemizer/config")]
+        public IActionResult GetTrackPhonemizerConfig(int trackIndex)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+
+            var track = project.tracks[trackIndex];
+            if (track.Phonemizer == null) return NotFound("Track phonemizer not found");
+
+            return Ok(new {
+                trackIndex,
+                phonemizerType = track.Phonemizer.GetType().FullName,
+                config = SnapshotConfig(track.Phonemizer)
+            });
+        }
+
+        [HttpPost("{trackIndex}/phonemizer/config")]
+        public IActionResult UpdateTrackPhonemizerConfig(int trackIndex, [FromBody] TrackPhonemizerConfigRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (trackIndex < 0 || trackIndex >= project.tracks.Count) return NotFound("Track not found");
+            if (request == null) return BadRequest("Request body is required.");
+
+            try
+            {
+                var track = project.tracks[trackIndex];
+                var targetPhonemizer = track.Phonemizer;
+                var needsReplace = !string.IsNullOrWhiteSpace(request.PhonemizerType);
+
+                if (needsReplace)
+                {
+                    targetPhonemizer = CreatePhonemizer(request.PhonemizerType, request.SingerId ?? track.Singer?.Id, out var error);
+                    if (targetPhonemizer == null)
+                    {
+                        return BadRequest(new { error });
+                    }
+                }
+
+                if (targetPhonemizer == null)
+                {
+                    return BadRequest("Track phonemizer not found.");
+                }
+
+                if (request.ConfigPatch.ValueKind != JsonValueKind.Null && request.ConfigPatch.ValueKind != JsonValueKind.Undefined)
+                {
+                    if (request.ConfigPatch.ValueKind != JsonValueKind.Object)
+                    {
+                        return BadRequest("Config patch must be a JSON object.");
+                    }
+
+                    ApplyConfigPatch(targetPhonemizer, request.ConfigPatch);
+                }
+
+                if (needsReplace)
+                {
+                    DocManager.Inst.StartUndoGroup("api", true);
+                    DocManager.Inst.ExecuteCmd(new TrackChangePhonemizerCommand(project, track, targetPhonemizer));
+                    DocManager.Inst.EndUndoGroup();
+                }
+
+                return Ok(new {
+                    message = "Track phonemizer config updated successfully.",
+                    trackIndex,
+                    phonemizerType = targetPhonemizer.GetType().FullName,
+                    config = SnapshotConfig(targetPhonemizer)
+                });
+            }
+            catch (Exception ex)
+            {
+                if (DocManager.Inst.HasOpenUndoGroup) DocManager.Inst.EndUndoGroup();
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
         [HttpPost("{trackIndex}/setrenderer")]
         public IActionResult SetTrackRenderer(int trackIndex, [FromQuery] string rendererId)
         {
@@ -214,6 +293,283 @@ namespace OpenUtau.Api.Controllers
                 return StatusCode(500, new { error = ex.Message });
             }
         }
+
+        private Phonemizer? CreatePhonemizer(string phonemizerType, string? singerId, out string error)
+        {
+            error = string.Empty;
+            if (string.IsNullOrWhiteSpace(phonemizerType))
+            {
+                error = "Phonemizer type is required.";
+                return null;
+            }
+
+            var factory = DocManager.Inst.PhonemizerFactories?.FirstOrDefault(f =>
+                string.Equals(f.name, phonemizerType, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(f.type.FullName, phonemizerType, StringComparison.OrdinalIgnoreCase));
+            if (factory == null)
+            {
+                error = "Phonemizer not found.";
+                return null;
+            }
+
+            var phonemizer = factory.Create();
+            if (phonemizer == null)
+            {
+                error = "Failed to create phonemizer instance.";
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(singerId))
+            {
+                var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == singerId);
+                if (singer == null)
+                {
+                    error = "Singer not found.";
+                    return null;
+                }
+
+                phonemizer.SetSinger(singer);
+            }
+
+            return phonemizer;
+        }
+
+        private static readonly HashSet<string> ConfigSkipMemberNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Name", "Tag", "Author", "Language", "Testing", "singer", "timeAxis", "bpm",
+            "DictionariesPath", "PluginDir"
+        };
+
+        private static object? SnapshotConfig(object target)
+        {
+            return SnapshotConfig(target, new HashSet<object>(ReferenceEqualityComparer.Instance), 0);
+        }
+
+        private static object? SnapshotConfig(object target, HashSet<object> visited, int depth)
+        {
+            if (target == null)
+            {
+                return null;
+            }
+
+            var type = target.GetType();
+            if (type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan))
+            {
+                return target;
+            }
+
+            if (depth > 5)
+            {
+                return target.ToString();
+            }
+
+            if (!visited.Add(target))
+            {
+                return "[Circular]";
+            }
+
+            if (target is System.Collections.IEnumerable enumerable && target is not string)
+            {
+                var items = new List<object?>();
+                foreach (var item in enumerable)
+                {
+                    items.Add(item == null ? null : SnapshotConfig(item, visited, depth + 1));
+                }
+                return items;
+            }
+
+            var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var member in GetInspectableMembers(type))
+            {
+                if (ConfigSkipMemberNames.Contains(member.Name))
+                {
+                    continue;
+                }
+
+                var memberType = GetMemberType(member);
+                if (!IsConfigLikeType(memberType))
+                {
+                    continue;
+                }
+
+                var value = GetMemberValue(target, member);
+                if (value == null)
+                {
+                    result[member.Name] = null;
+                    continue;
+                }
+
+                result[member.Name] = SnapshotConfig(value, visited, depth + 1);
+            }
+
+            return result;
+        }
+
+        private static void ApplyConfigPatch(object target, JsonElement patch)
+        {
+            if (target == null)
+            {
+                throw new ArgumentNullException(nameof(target));
+            }
+
+            if (patch.ValueKind != JsonValueKind.Object)
+            {
+                throw new ArgumentException("Config patch must be a JSON object.");
+            }
+
+            foreach (var prop in patch.EnumerateObject())
+            {
+                ApplyConfigMemberPatch(target, prop.Name, prop.Value);
+            }
+        }
+
+        private static void ApplyConfigMemberPatch(object target, string memberName, JsonElement value)
+        {
+            var member = GetInspectableMembers(target.GetType())
+                .FirstOrDefault(m => string.Equals(m.Name, memberName, StringComparison.OrdinalIgnoreCase));
+
+            if (member == null)
+            {
+                throw new ArgumentException($"Config member '{memberName}' was not found on {target.GetType().Name}.");
+            }
+
+            if (ConfigSkipMemberNames.Contains(member.Name))
+            {
+                throw new ArgumentException($"Config member '{memberName}' is read-only.");
+            }
+
+            var memberType = GetMemberType(member);
+            var currentValue = GetMemberValue(target, member);
+
+            if (value.ValueKind == JsonValueKind.Object && currentValue != null && IsConfigLikeType(memberType) && !typeof(System.Collections.IEnumerable).IsAssignableFrom(memberType))
+            {
+                ApplyConfigPatch(currentValue, value);
+                return;
+            }
+
+            object? convertedValue = null;
+            if (value.ValueKind != JsonValueKind.Null && value.ValueKind != JsonValueKind.Undefined)
+            {
+                convertedValue = JsonSerializer.Deserialize(value.GetRawText(), memberType);
+            }
+
+            SetMemberValue(target, member, convertedValue);
+        }
+
+        private static IEnumerable<MemberInfo> GetInspectableMembers(Type type)
+        {
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+            while (type != null && type != typeof(object))
+            {
+                if (type != typeof(Phonemizer))
+                {
+                    foreach (var field in type.GetFields(flags))
+                    {
+                        if (!field.IsStatic)
+                        {
+                            yield return field;
+                        }
+                    }
+
+                    foreach (var prop in type.GetProperties(flags))
+                    {
+                        if (prop.GetIndexParameters().Length == 0 && prop.GetMethod != null)
+                        {
+                            yield return prop;
+                        }
+                    }
+                }
+
+                type = type.BaseType;
+            }
+        }
+
+        private static Type GetMemberType(MemberInfo member)
+        {
+            return member switch
+            {
+                FieldInfo field => field.FieldType,
+                PropertyInfo prop => prop.PropertyType,
+                _ => throw new NotSupportedException($"Unsupported member type: {member.MemberType}")
+            };
+        }
+
+        private static object? GetMemberValue(object target, MemberInfo member)
+        {
+            return member switch
+            {
+                FieldInfo field => field.GetValue(target),
+                PropertyInfo prop => prop.GetValue(target),
+                _ => throw new NotSupportedException($"Unsupported member type: {member.MemberType}")
+            };
+        }
+
+        private static void SetMemberValue(object target, MemberInfo member, object? value)
+        {
+            switch (member)
+            {
+                case FieldInfo field:
+                    field.SetValue(target, value);
+                    break;
+                case PropertyInfo prop:
+                    if (!prop.CanWrite)
+                    {
+                        throw new InvalidOperationException($"Property '{prop.Name}' is read-only.");
+                    }
+                    prop.SetValue(target, value);
+                    break;
+                default:
+                    throw new NotSupportedException($"Unsupported member type: {member.MemberType}");
+            }
+        }
+
+        private static bool IsConfigLikeType(Type type)
+        {
+            if (type == null) return false;
+
+            var underlying = Nullable.GetUnderlyingType(type);
+            if (underlying != null)
+            {
+                type = underlying;
+            }
+
+            if (type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) || type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(TimeSpan))
+            {
+                return true;
+            }
+
+            if (typeof(System.Collections.IDictionary).IsAssignableFrom(type))
+            {
+                return false;
+            }
+
+            if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type) && type != typeof(string))
+            {
+                return true;
+            }
+
+            if (type.IsDefined(typeof(SerializableAttribute), inherit: true))
+            {
+                return true;
+            }
+
+            return type.Namespace != null && (type.Namespace.StartsWith("OpenUtau", StringComparison.Ordinal) || type.Namespace.StartsWith("System", StringComparison.Ordinal));
+        }
+
+        private sealed class ReferenceEqualityComparer : IEqualityComparer<object>
+        {
+            public static readonly ReferenceEqualityComparer Instance = new ReferenceEqualityComparer();
+            public new bool Equals(object x, object y) => ReferenceEquals(x, y);
+            public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+        }
+
+        public class TrackPhonemizerConfigRequest
+        {
+            public string? PhonemizerType { get; set; }
+            public string? SingerId { get; set; }
+            public JsonElement ConfigPatch { get; set; }
+        }
+
         [HttpPost("{trackIndex}/voicecolormapping")]
         public IActionResult SetVoiceColorMapping(int trackIndex, [FromQuery] bool validate = true)
         {

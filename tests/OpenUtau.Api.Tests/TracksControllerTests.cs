@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Api.Controllers;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
+using System.Linq;
+using System.Reflection;
+using System.Text.Json;
 using Xunit;
 
 namespace OpenUtau.Api.Tests
@@ -91,6 +94,35 @@ namespace OpenUtau.Api.Tests
             var result = _controller.SetTrackSinger(0, "NonExistentSinger");
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
             Assert.Contains("not found", badRequestResult.Value.ToString());
+        }
+
+        [Fact]
+        public void UpdateTrackPhonemizerConfig_ReplaceAndPatch_ReturnsUpdatedConfig()
+        {
+            var factory = DocManager.Inst.PhonemizerFactories.FirstOrDefault(f =>
+                f.type.FullName == "OpenUtau.Core.DiffSinger.Phonemizers.DiffSingerRhythmizerPhonemizer" ||
+                f.name == "DiffSinger Rhythmizer Phonemizer");
+
+            Assert.NotNull(factory);
+
+            var result = _controller.UpdateTrackPhonemizerConfig(0, new TracksController.TrackPhonemizerConfigRequest {
+                PhonemizerType = factory.type.FullName,
+                ConfigPatch = JsonSerializer.SerializeToElement(new {
+                    rhythmizer = "api_test_rhythmizer"
+                })
+            });
+
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var project = DocManager.Inst.Project;
+            Assert.NotNull(project.tracks[0].Phonemizer);
+            Assert.Equal(factory.type.FullName, project.tracks[0].Phonemizer.GetType().FullName);
+
+            var member = project.tracks[0].Phonemizer.GetType().GetField("rhythmizer", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                ?? (MemberInfo)project.tracks[0].Phonemizer.GetType().GetProperty("rhythmizer", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            Assert.NotNull(member);
+            var value = member is FieldInfo field ? field.GetValue(project.tracks[0].Phonemizer) : ((PropertyInfo)member).GetValue(project.tracks[0].Phonemizer);
+            Assert.Equal("api_test_rhythmizer", value);
         }
     }
 }
