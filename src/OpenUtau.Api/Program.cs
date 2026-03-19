@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using OpenUtau.Core;
@@ -14,6 +16,21 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddControllers();
+
+var maxUploadRequestBodySizeBytes = builder.Configuration.GetValue<long?>("Upload:MaxRequestBodySizeBytes");
+if (maxUploadRequestBodySizeBytes.HasValue)
+{
+    var configuredLimit = maxUploadRequestBodySizeBytes.Value <= 0 ? (long?)null : maxUploadRequestBodySizeBytes.Value;
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.Limits.MaxRequestBodySize = configuredLimit;
+    });
+
+    builder.Services.Configure<FormOptions>(options =>
+    {
+        options.MultipartBodyLengthLimit = configuredLimit ?? long.MaxValue;
+    });
+}
 
 var authEnabled = builder.Configuration.GetValue("Auth:Enabled", false);
 if (authEnabled)

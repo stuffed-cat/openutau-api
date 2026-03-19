@@ -29,8 +29,5 @@ This project attempts to provide a headless HTTP wrapper around the `OpenUtau.Co
 
 See [docs/deployment.md](docs/deployment.md) for runtime configuration, optional authentication, and deployment guidance.
 
-### Next Steps
-1. Add custom parameters (pitch, expression values).
-2. Configure OpenUtau to natively resolve external resamplers by providing Linux/macOS paths via HTTP injection.
-3. Hook DiffSinger and Voicevox dependencies automatically.
+For large voicebank uploads, set `Upload__MaxRequestBodySizeBytes` to a larger value, for example `524288000` for 500 MB.
 

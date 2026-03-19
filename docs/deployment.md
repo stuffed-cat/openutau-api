@@ -46,6 +46,16 @@ Use double underscores for nested keys:
 - `Auth__HeaderName=X-Api-Key`
 - `Auth__ApiKey=replace-with-secret`
 
+### Upload size
+
+Large multipart uploads, including voicebank packages, can be capped by Kestrel and form parsing limits.
+
+Set the maximum request body size in bytes:
+
+- `Upload__MaxRequestBodySizeBytes=524288000`
+
+Set it to `0` to disable the limit.
+
 ## 3. Local run
 
 From the repository root:
@@ -81,6 +91,7 @@ If you package the API in a container, pass auth settings as environment variabl
 
 ```bash
 docker run -e Auth__Enabled=true -e Auth__ApiKey=replace-with-secret openutau-api
+docker run -e Auth__Enabled=true -e Auth__ApiKey=replace-with-secret -e Upload__MaxRequestBodySizeBytes=524288000 openutau-api
 ```
 
 Mount persistent volumes for:
