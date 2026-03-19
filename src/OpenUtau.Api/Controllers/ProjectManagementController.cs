@@ -31,12 +31,15 @@ namespace OpenUtau.Api.Controllers
                 
                 // Keep the first tempo (index 0) and change its BPM, remove others
                 DocManager.Inst.ExecuteCmd(new BpmCommand(project, bpm));
+                project.ValidateFull();
                 
                 // Optionally clear other tempos if they exist
                 foreach (var tempo in project.tempos.Skip(1))
                 {
                     DocManager.Inst.ExecuteCmd(new DelTempoChangeCommand(project, tempo.position));
                 }
+
+                project.ValidateFull();
 
                 // Execute remap using new time axis logic similar to MainWindowViewModel
                 var newTimeAxis = project.timeAxis.Clone();

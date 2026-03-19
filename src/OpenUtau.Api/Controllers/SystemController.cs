@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using OpenUtau.Api;
 using OpenUtau.Core;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Util;
@@ -17,7 +18,7 @@ namespace OpenUtau.Api.Controllers
         [HttpGet("info")]
         public IActionResult GetSystemInfo()
         {
-            var phonemizers = DocManager.Inst.PhonemizerFactories?.ToList() ?? new List<object>();
+            var phonemizers = DocManager.Inst.PhonemizerFactories?.ToList() ?? new List<PhonemizerFactory>();
             var renderersBySingerType = Enum.GetValues(typeof(OpenUtau.Core.Ustx.USingerType))
                 .Cast<OpenUtau.Core.Ustx.USingerType>()
                 .ToDictionary(
@@ -56,7 +57,7 @@ namespace OpenUtau.Api.Controllers
                     Renderers = uniqueRenderers.Count,
                     RenderersBySingerType = renderersBySingerType.ToDictionary(
                         pair => pair.Key,
-                        pair => pair.Value.Count)
+                        pair => pair.Value.Count())
                 },
                 Message = "OpenUtau Core is running headlessly!"
             });

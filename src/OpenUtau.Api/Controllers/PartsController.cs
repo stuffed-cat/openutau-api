@@ -7,6 +7,8 @@ using System;
 using System.Linq;
 using OpenUtau.Core;
 using OpenUtau.Core.Analysis;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -384,7 +386,7 @@ namespace OpenUtau.Api.Controllers
                     message = "Wave part cropped successfully.",
                     skipMs = newPart.skipMs,
                     trimMs = newPart.trimMs,
-                    newDurationMs = newPart.duration
+                    newDurationMs = newPart.Duration
                 });
             }
             catch (Exception ex)
@@ -417,8 +419,8 @@ namespace OpenUtau.Api.Controllers
 
                 // Time stretching is achieved by modifying the duration
                 // The actual audio processing would be done by external tools
-                int newDuration = (int)System.Math.Round(part.duration / request.StretchRatio);
-                part.duration = newDuration;
+                int newDuration = (int)System.Math.Round(part.Duration / request.StretchRatio);
+                part.Duration = newDuration;
 
                 DocManager.Inst.EndUndoGroup();
 
@@ -466,15 +468,15 @@ namespace OpenUtau.Api.Controllers
                 // Apply fade using NAudio
                 await Task.Run(() =>
                 {
-                    using (var reader = new NAudio.Wave.AudioFileReader(part.FilePath))
+                    using (var reader = new NAudio.Wave.WaveFileReader(part.FilePath))
                     {
-                        var fadeProvider = new NAudio.Wave.SampleProviders.FadeInOutSampleProvider(reader)
-                        {
-                            FadeInDuration = request.Type == "in" || request.Type == "both" ? request.FadeDurationMs / 1000.0 : 0,
-                            FadeOutDuration = request.Type == "out" || request.Type == "both" ? request.FadeDurationMs / 1000.0 : 0
-                        };
+                        var sampleProvider = reader.ToSampleProvider();
+                        var fadeProvider = new FadeSampleProvider(
+                            sampleProvider,
+                            request.Type == "in" || request.Type == "both" ? request.FadeDurationMs / 1000.0 : 0,
+                            request.Type == "out" || request.Type == "both" ? request.FadeDurationMs / 1000.0 : 0);
 
-                        NAudio.Wave.WaveFileWriter.CreateWaveFile(outputPath, fadeProvider);
+                        NAudio.Wave.WaveFileWriter.CreateWaveFile16(outputPath, fadeProvider);
                     }
                 });
 
@@ -540,7 +542,7 @@ namespace OpenUtau.Api.Controllers
                 }
 
                 // Store volume envelope metadata as a note in comment
-                string envelopeData = System.Text.Json.JsonConvert.ToString(request.Points);
+                string envelopeData = System.Text.Json.JsonSerializer.Serialize(request.Points);
                 string newComment = part.comment + (string.IsNullOrEmpty(part.comment) ? "" : "\n") 
                     + "VOLUME_ENVELOPE:" + envelopeData;
 
@@ -1067,6 +1069,59 @@ namespace OpenUtau.Api.Controllers
                 message = $"Curve {abbr} {operation} applied successfully", 
                 pointCount = xs.Length 
             });
+        }
+
+        private sealed class FadeSampleProvider : NAudio.Wave.ISampleProvider
+        {
+            private readonly NAudio.Wave.ISampleProvider source;
+            private readonly int fadeInSamples;
+            private readonly int fadeOutSamples;
+            private long totalSamplesRead;
+            private readonly long totalSamples;
+
+            public FadeSampleProvider(NAudio.Wave.ISampleProvider source, double fadeInSeconds, double fadeOutSeconds)
+            {
+                this.source = source;
+                fadeInSamples = (int)System.Math.Max(0, System.Math.Round(fadeInSeconds * source.WaveFormat.SampleRate)) * source.WaveFormat.Channels;
+                fadeOutSamples = (int)System.Math.Max(0, System.Math.Round(fadeOutSeconds * source.WaveFormat.SampleRate)) * source.WaveFormat.Channels;
+                totalSamples = source.WaveFormat.SampleRate * source.WaveFormat.Channels * 60L;
+            }
+
+            public NAudio.Wave.WaveFormat WaveFormat => source.WaveFormat;
+
+            public int Read(float[] buffer, int offset, int count)
+            {
+                var read = source.Read(buffer, offset, count);
+                if (read <= 0)
+                {
+                    return read;
+                }
+
+                for (int i = 0; i < read; i++)
+                {
+                    var sampleIndex = totalSamplesRead + i;
+                    var gain = 1.0f;
+
+                    if (fadeInSamples > 0 && sampleIndex < fadeInSamples)
+                    {
+                        gain = (float)sampleIndex / fadeInSamples;
+                    }
+
+                    if (fadeOutSamples > 0)
+                    {
+                        var fadeOutStart = totalSamples - fadeOutSamples;
+                        if (sampleIndex >= fadeOutStart)
+                        {
+                            gain = System.Math.Min(gain, (float)(totalSamples - sampleIndex) / fadeOutSamples);
+                        }
+                    }
+
+                    buffer[offset + i] *= System.Math.Clamp(gain, 0f, 1f);
+                }
+
+                totalSamplesRead += read;
+                return read;
+            }
         }
 
 
