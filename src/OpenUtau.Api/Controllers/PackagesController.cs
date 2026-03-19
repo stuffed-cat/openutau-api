@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Core;
 using Classic;
 using OpenUtau.Classic;
+using OpenUtau.Api.Services;
 
 namespace OpenUtau.Api.Controllers
 {
@@ -42,9 +43,11 @@ namespace OpenUtau.Api.Controllers
                 }
                 else if (ext == ".zip" || ext == ".rar" || ext == ".uar")
                 {
-                    var basePath = PathManager.Inst.SingersInstallPath;
-                    var installer = new VoicebankInstaller(basePath, (progress, info) => { }, System.Text.Encoding.GetEncoding("shift_jis"), System.Text.Encoding.GetEncoding("shift_jis"));
-                    installer.Install(tempPath, "utau");
+                    VoicebankPackageInstaller.Install(
+                        tempPath,
+                        "utau",
+                        System.Text.Encoding.GetEncoding("shift_jis"),
+                        System.Text.Encoding.GetEncoding("shift_jis"));
                     SingerManager.Inst.SearchAllSingers();
                 }
                 else if (ext == ".exe" || ext == ".sh" || string.IsNullOrEmpty(ext))
