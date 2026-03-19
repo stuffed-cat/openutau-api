@@ -40,6 +40,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<OpenUtau.Api.Middlewares.SessionMiddleware>();
+app.UseWebSockets();
 
 app.MapControllers();
 app.Run();
+
+public partial class Program { }

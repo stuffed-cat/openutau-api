@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +15,7 @@ namespace OpenUtau.Api.Controllers
     [Route("api/[controller]")]
     public class EventsController : ControllerBase
     {
+        private static readonly ConcurrentDictionary<Guid, WebSocketConnection> WebSocketClients = new ConcurrentDictionary<Guid, WebSocketConnection>();
         private readonly EventsMonitor _monitor;
 
         public EventsController()
@@ -61,6 +66,125 @@ namespace OpenUtau.Api.Controllers
             {
                 _monitor.EventReceived -= OnEventReceived;
             }
+        }
+
+        [HttpGet("ws")]
+        public async Task WebSocketEvents()
+        {
+            if (!HttpContext.WebSockets.IsWebSocketRequest)
+            {
+                Response.StatusCode = StatusCodes.Status400BadRequest;
+                await Response.WriteAsync("WebSocket request expected.");
+                return;
+            }
+
+            using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
+            var client = new WebSocketConnection(webSocket);
+            WebSocketClients[client.Id] = client;
+
+            void OnEventReceived(object sender, UtauEventArgs e)
+            {
+                _ = client.SendAsync(new
+                {
+                    type = "event",
+                    eventType = e.EventType,
+                    message = e.Message,
+                    isUndo = e.IsUndo,
+                    data = e.Data
+                }, HttpContext.RequestAborted);
+            }
+
+            _monitor.EventReceived += OnEventReceived;
+
+            try
+            {
+                await client.SendAsync(new { type = "connected" }, HttpContext.RequestAborted);
+                await ReceiveLoop(client, HttpContext.RequestAborted);
+            }
+            finally
+            {
+                _monitor.EventReceived -= OnEventReceived;
+                WebSocketClients.TryRemove(client.Id, out _);
+                await client.CloseAsync();
+            }
+        }
+
+        private static async Task ReceiveLoop(WebSocketConnection client, CancellationToken cancellationToken)
+        {
+            var buffer = new byte[4096];
+            while (!cancellationToken.IsCancellationRequested && client.Socket.State == WebSocketState.Open)
+            {
+                WebSocketReceiveResult result;
+                var message = new StringBuilder();
+                do
+                {
+                    result = await client.Socket.ReceiveAsync(buffer, cancellationToken);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        return;
+                    }
+
+                    message.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                } while (!result.EndOfMessage);
+
+                await HandleClientMessage(client, message.ToString(), cancellationToken);
+            }
+        }
+
+        private static async Task HandleClientMessage(WebSocketConnection client, string message, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(message);
+                var root = doc.RootElement;
+                var type = root.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
+
+                if (string.Equals(type, "ping", StringComparison.OrdinalIgnoreCase))
+                {
+                    await client.SendAsync(new { type = "pong" }, cancellationToken);
+                    return;
+                }
+
+                if (string.Equals(type, "broadcast", StringComparison.OrdinalIgnoreCase))
+                {
+                    var payload = root.TryGetProperty("payload", out var payloadProp) ? payloadProp : default;
+                    await BroadcastAsync(new
+                    {
+                        type = "broadcast",
+                        clientId = client.Id,
+                        payload = payload.ValueKind == JsonValueKind.Undefined ? null : JsonSerializer.Deserialize<object>(payload.GetRawText())
+                    }, cancellationToken);
+                    return;
+                }
+
+                await client.SendAsync(new { type = "error", message = "Unsupported websocket message type." }, cancellationToken);
+            }
+            catch (JsonException)
+            {
+                if (string.Equals(message.Trim(), "ping", StringComparison.OrdinalIgnoreCase))
+                {
+                    await client.SendAsync(new { type = "pong" }, cancellationToken);
+                }
+                else
+                {
+                    await client.SendAsync(new { type = "error", message = "Invalid websocket message format." }, cancellationToken);
+                }
+            }
+        }
+
+        private static async Task BroadcastAsync(object payload, CancellationToken cancellationToken)
+        {
+            var tasks = new List<Task>();
+            foreach (var connection in WebSocketClients.Values)
+            {
+                tasks.Add(connection.SendAsync(payload, cancellationToken));
+            }
+            await Task.WhenAll(tasks);
         }
     }
 
@@ -146,6 +270,61 @@ namespace OpenUtau.Api.Controllers
                 IsUndo = isUndo,
                 Data = eventData
             });
+        }
+    }
+
+    internal sealed class WebSocketConnection
+    {
+        private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
+        public Guid Id { get; } = Guid.NewGuid();
+        public WebSocket Socket { get; }
+
+        public WebSocketConnection(WebSocket socket)
+        {
+            Socket = socket;
+        }
+
+        public async Task SendAsync(object payload, CancellationToken cancellationToken)
+        {
+            if (Socket.State != WebSocketState.Open)
+            {
+                return;
+            }
+
+            var json = JsonSerializer.Serialize(payload);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            await _sendLock.WaitAsync(cancellationToken);
+            try
+            {
+                if (Socket.State == WebSocketState.Open)
+                {
+                    await Socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken);
+                }
+            }
+            finally
+            {
+                _sendLock.Release();
+            }
+        }
+
+        public async Task CloseAsync()
+        {
+            try
+            {
+                if (Socket.State == WebSocketState.Open)
+                {
+                    await Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                }
+            }
+            catch
+            {
+                // Ignore close failures
+            }
+            finally
+            {
+                Socket.Dispose();
+                _sendLock.Dispose();
+            }
         }
     }
 }
