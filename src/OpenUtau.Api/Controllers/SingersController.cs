@@ -370,12 +370,96 @@ namespace OpenUtau.Api.Controllers
         public class OtoEdit
         {
             public string Alias { get; set; } = string.Empty;
+            public string? Set { get; set; }
+            public string? File { get; set; }
             public string? NewAlias { get; set; }
             public double? Offset { get; set; }
             public double? Consonant { get; set; }
             public double? Cutoff { get; set; }
             public double? Preutter { get; set; }
             public double? Overlap { get; set; }
+        }
+
+        public class OtoEditRequest
+        {
+            public List<OtoEdit>? OtoEdits { get; set; }
+        }
+
+        [HttpPut("{id}/otos")]
+        public IActionResult UpdateSingerOtos(string id, [FromBody] OtoEditRequest request)
+        {
+            var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id) as OpenUtau.Classic.ClassicSinger;
+            if (singer == null)
+            {
+                return NotFound(new { error = "Classic Singer not found" });
+            }
+
+            if (request?.OtoEdits == null || request.OtoEdits.Count == 0)
+            {
+                return BadRequest(new { error = "No oto edits provided" });
+            }
+
+            var resolvedEdits = new List<(OpenUtau.Core.Ustx.UOto Oto, OtoEdit Edit)>();
+
+            foreach (var edit in request.OtoEdits)
+            {
+                if (string.IsNullOrWhiteSpace(edit.Alias))
+                {
+                    return BadRequest(new { error = "OTO alias is required" });
+                }
+
+                var matches = singer.Otos.Where(o =>
+                    string.Equals(o.Alias, edit.Alias, StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(edit.Set) || string.Equals(o.Set, edit.Set, StringComparison.OrdinalIgnoreCase)) &&
+                    (string.IsNullOrWhiteSpace(edit.File) || string.Equals(o.DisplayFile, edit.File, StringComparison.OrdinalIgnoreCase) || string.Equals(o.File, edit.File, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                if (matches.Count == 0)
+                {
+                    return NotFound(new { error = $"Oto not found: {edit.Alias}" });
+                }
+
+                if (matches.Count > 1)
+                {
+                    return BadRequest(new { error = $"Ambiguous oto match for alias '{edit.Alias}'" });
+                }
+
+                var hasAnyUpdate = edit.Offset.HasValue || edit.Consonant.HasValue || edit.Cutoff.HasValue || edit.Preutter.HasValue || edit.Overlap.HasValue;
+                if (!hasAnyUpdate)
+                {
+                    return BadRequest(new { error = $"No oto parameters provided for '{edit.Alias}'" });
+                }
+
+                static bool IsInvalidDouble(double value)
+                {
+                    return double.IsNaN(value) || double.IsInfinity(value);
+                }
+
+                if (edit.Offset.HasValue && IsInvalidDouble(edit.Offset.Value) ||
+                    edit.Consonant.HasValue && IsInvalidDouble(edit.Consonant.Value) ||
+                    edit.Cutoff.HasValue && IsInvalidDouble(edit.Cutoff.Value) ||
+                    edit.Preutter.HasValue && IsInvalidDouble(edit.Preutter.Value) ||
+                    edit.Overlap.HasValue && IsInvalidDouble(edit.Overlap.Value))
+                {
+                    return BadRequest(new { error = "OTO values must be finite numbers" });
+                }
+
+                resolvedEdits.Add((matches[0], edit));
+            }
+
+            foreach (var (oto, edit) in resolvedEdits)
+            {
+                if (edit.Offset.HasValue) oto.Offset = edit.Offset.Value;
+                if (edit.Consonant.HasValue) oto.Consonant = edit.Consonant.Value;
+                if (edit.Cutoff.HasValue) oto.Cutoff = edit.Cutoff.Value;
+                if (edit.Preutter.HasValue) oto.Preutter = edit.Preutter.Value;
+                if (edit.Overlap.HasValue) oto.Overlap = edit.Overlap.Value;
+            }
+
+            singer.Save();
+            singer.Reload();
+
+            return Ok(new { message = "OTO entries updated successfully", updated = resolvedEdits.Count });
         }
 
         [HttpPost("{id}/edit")]
