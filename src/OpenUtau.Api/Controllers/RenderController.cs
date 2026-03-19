@@ -105,8 +105,8 @@ namespace OpenUtau.Api.Controllers
                 var tempFile = Path.GetTempFileName();
                 using (var stream = new FileStream(tempFile, FileMode.Create)) { file.CopyTo(stream); }
 
-                Formats.LoadProject(new string[] { tempFile });
-                var project = DocManager.Inst.Project;
+                var project = Formats.ReadProject(new string[] { tempFile });
+                
                 if (project == null) {
                     System.IO.File.Delete(tempFile);
                     return BadRequest("Failed to load project.");
@@ -186,8 +186,8 @@ namespace OpenUtau.Api.Controllers
                 var tempFile = Path.GetTempFileName();
                 using (var stream = new FileStream(tempFile, FileMode.Create)) { file.CopyTo(stream); }
 
-                Formats.LoadProject(new string[] { tempFile });
-                var project = DocManager.Inst.Project;
+                var project = Formats.ReadProject(new string[] { tempFile });
+                
                 if (project == null) {
                     System.IO.File.Delete(tempFile);
                     return BadRequest("Failed to load project.");

@@ -16,10 +16,35 @@ namespace OpenUtau.Api.Middlewares
             _next = next;
         }
 
+        private static readonly string[] _bypassPrefixes = new[]
+        {
+            "/api/renderprogress",   // Render progress status & long-polling sse
+            "/api/events",           // Events long-polling sse
+            "/api/project/render",   // Independent file rendering (does not use single global project)
+            "/api/plugins",          // static plugins querying
+            "/api/renderers"         // static renderers querying
+        };
+
         public async Task InvokeAsync(HttpContext context)
         {
-            // Only apply session switch and locking for /api/ routes
-            if (context.Request.Path.Value != null && context.Request.Path.Value.StartsWith("/api/"))
+            var path = context.Request.Path.Value?.ToLowerInvariant();
+
+            // Check if the route is exempted from global session locking
+            bool bypassLock = false;
+            if (path != null)
+            {
+                foreach (var prefix in _bypassPrefixes)
+                {
+                    if (path.StartsWith(prefix))
+                    {
+                        bypassLock = true;
+                        break;
+                    }
+                }
+            }
+
+            // Only apply session switch and locking for /api/ routes that are not bypassed
+            if (path != null && path.StartsWith("/api/") && !bypassLock)
             {
                 // check query string or header for specific sessionId token
                 var sessionId = context.Request.Headers["X-Session-Id"].ToString();
