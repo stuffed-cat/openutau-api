@@ -262,10 +262,16 @@ namespace OpenUtau.Api.Controllers
                     }
                     int sampleRate = sampleProvider.WaveFormat.SampleRate;
                     var signal = Wave.GetSignal(sampleProvider);
-                    
-                    var framesCount = (signal.Length - fftSize) / hopSize + 1;
-                    if (framesCount < 0) framesCount = 0;
-                    var binCount = fftSize / 2;
+
+                    if (fftSize < 2) return BadRequest("fftSize must be >= 2.");
+                    if ((fftSize & (fftSize - 1)) != 0) return BadRequest("fftSize must be a power of two.");
+                    if (hopSize < 1) return BadRequest("hopSize must be >= 1.");
+
+                    var samples = signal.Samples;
+                    var framesCount = samples.Length <= 0
+                        ? 0
+                        : Math.Max(1, (int)Math.Ceiling((Math.Max(0, samples.Length - fftSize) / (double)hopSize)) + 1);
+                    var binCount = fftSize / 2 + 1;
 
                     double[][] amplitudes = new double[framesCount][];
                     for (int i = 0; i < framesCount; i++)
@@ -273,34 +279,39 @@ namespace OpenUtau.Api.Controllers
                         amplitudes[i] = new double[binCount];
                     }
 
+                    double[] frequencies = new double[binCount];
+                    for (int i = 0; i < binCount; i++)
+                    {
+                        frequencies[i] = (double)i * sampleRate / fftSize;
+                    }
+
                     int m = (int)Math.Log(fftSize, 2.0);
-                    
+                    double[] hannWindow = new double[fftSize];
+                    for (int i = 0; i < fftSize; i++)
+                    {
+                        hannWindow[i] = 0.5 * (1 - Math.Cos(2 * Math.PI * i / (fftSize - 1)));
+                    }
+
                     for (int f = 0; f < framesCount; f++)
                     {
                         int start = f * hopSize;
                         NAudio.Dsp.Complex[] complexData = new NAudio.Dsp.Complex[fftSize];
                         for (int i = 0; i < fftSize; i++)
                         {
-                            double window = 0.5 * (1 - Math.Cos(2 * Math.PI * i / (fftSize - 1))); // Hann window
-                            complexData[i].X = (float)(signal[start + i] * window);
+                            int index = start + i;
+                            double sample = index < samples.Length ? samples[index] : 0.0;
+                            complexData[i].X = (float)(sample * hannWindow[i]);
                             complexData[i].Y = 0;
                         }
-                        
+
                         NAudio.Dsp.FastFourierTransform.FFT(true, m, complexData);
 
                         for (int i = 0; i < binCount; i++)
                         {
                             double magnitude = Math.Sqrt(complexData[i].X * complexData[i].X + complexData[i].Y * complexData[i].Y);
-                            // Amplitude to dB (magnitude)
                             double magDb = 20 * Math.Log10(magnitude + 1e-10); // avoid log(0)
                             amplitudes[f][i] = magDb;
                         }
-                    }
-
-                    double[] frequencies = new double[binCount];
-                    for (int i = 0; i < binCount; i++)
-                    {
-                        frequencies[i] = (double)i * sampleRate / fftSize;
                     }
 
                     System.IO.File.Delete(tempFile);
