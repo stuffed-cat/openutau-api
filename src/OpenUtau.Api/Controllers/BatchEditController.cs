@@ -15,59 +15,26 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class BatchEditController : ControllerBase
     {
-        [HttpGet("supported")] 
+        private static readonly Lazy<IReadOnlyDictionary<string, BatchEditSpec>> BatchEditSpecs =
+            new Lazy<IReadOnlyDictionary<string, BatchEditSpec>>(BuildBatchEditSpecs);
+
+        [HttpGet("supported")]
         public IActionResult GetSupportedBatchEdits()
         {
-            return Ok(new[]
-            {
-                new { editName = "quantize", description = "Quantize selected notes", parameters = new[] { "quantize" } },
-                new { editName = "auto-legato", description = "Auto adjust note lengths for legato", parameters = Array.Empty<string>() },
-                new { editName = "fix-overlap", description = "Resolve overlapping notes", parameters = Array.Empty<string>() },
-                new { editName = "load-rendered-pitch", description = "Bake rendered pitch into note pitch points", parameters = Array.Empty<string>() },
-                new { editName = "bake-pitch", description = "Convert PITD curve to pitch points", parameters = Array.Empty<string>() },
-                new { editName = "refresh-real-curves", description = "Refresh renderer-defined real curves", parameters = Array.Empty<string>() },
-                new { editName = "add-tail-dash", description = "Add tail notes with dash lyric", parameters = new[] { "lyric" } },
-                new { editName = "add-tail-rest", description = "Add tail notes with rest lyric", parameters = new[] { "lyric" } },
-                new { editName = "remove-tail-dash", description = "Remove dash tail notes", parameters = new[] { "lyric" } },
-                new { editName = "remove-tail-rest", description = "Remove rest tail notes", parameters = new[] { "lyric" } },
-                new { editName = "transpose", description = "Transpose selected notes by semitones", parameters = new[] { "deltaNoteNum" } },
-                new { editName = "octave-up", description = "Transpose selected notes up one octave", parameters = Array.Empty<string>() },
-                new { editName = "octave-down", description = "Transpose selected notes down one octave", parameters = Array.Empty<string>() },
-                new { editName = "commonnote-copy", description = "Copy commonnote selection to clipboard", parameters = Array.Empty<string>() },
-                new { editName = "commonnote-paste", description = "Paste commonnote clipboard content", parameters = Array.Empty<string>() },
-                new { editName = "add-breath-note", description = "Insert breath notes", parameters = new[] { "lyric" } },
-                new { editName = "randomize-timing", description = "Randomize note timing", parameters = Array.Empty<string>() },
-                new { editName = "randomize-phoneme-offset", description = "Randomize phoneme offsets", parameters = Array.Empty<string>() },
-                new { editName = "randomize-tuning", description = "Randomize tuning values", parameters = new[] { "max" } },
-                new { editName = "lengthen-crossfade", description = "Lengthen crossfade overlap", parameters = new[] { "ratio" } },
-                new { editName = "remove-tone-suffix", description = "Remove pitch suffix from lyrics", parameters = Array.Empty<string>() },
-                new { editName = "remove-letter-suffix", description = "Remove alphabetic suffix from lyrics", parameters = Array.Empty<string>() },
-                new { editName = "move-suffix-to-voice-color", description = "Move lyric suffix to voice color", parameters = Array.Empty<string>() },
-                new { editName = "remove-phonetic-hint", description = "Remove phonetic hints from lyrics", parameters = Array.Empty<string>() },
-                new { editName = "dash-to-plus", description = "Convert dash lyric to plus", parameters = Array.Empty<string>() },
-                new { editName = "dash-to-plus-tilda", description = "Convert dash lyric to plus~", parameters = Array.Empty<string>() },
-                new { editName = "insert-slur", description = "Insert slur notes", parameters = Array.Empty<string>() },
-                new { editName = "reset-pitch", description = "Reset pitch bends", parameters = Array.Empty<string>() },
-                new { editName = "reset-vibrato", description = "Reset vibratos", parameters = Array.Empty<string>() },
-                new { editName = "reset-all-expressions", description = "Reset note expressions and curves", parameters = Array.Empty<string>() },
-                new { editName = "clear-vibratos", description = "Clear vibrato lengths", parameters = Array.Empty<string>() },
-                new { editName = "reset-aliases", description = "Reset phoneme aliases", parameters = Array.Empty<string>() },
-                new { editName = "clear-timings", description = "Clear phoneme timing overrides", parameters = Array.Empty<string>() },
-                new { editName = "reset-all", description = "Reset all note tuning/expression data", parameters = Array.Empty<string>() },
-                new { editName = "hanzi-to-pinyin", description = "Convert Chinese lyrics to pinyin", parameters = Array.Empty<string>() },
-                new { editName = "japanese-vcv-to-cv", description = "Convert Japanese VCV to CV", parameters = Array.Empty<string>() },
-                new { editName = "romaji-to-hiragana", description = "Convert romaji lyrics to hiragana", parameters = Array.Empty<string>() },
-                new { editName = "hiragana-to-romaji", description = "Convert hiragana lyrics to romaji", parameters = Array.Empty<string>() },
-                new { editName = "katakana-to-hiragana", description = "Convert katakana lyrics to hiragana", parameters = Array.Empty<string>() },
-                new { editName = "hiragana-to-katakana", description = "Convert hiragana lyrics to katakana", parameters = Array.Empty<string>() },
-                new { editName = "korean-romaji-to-hangeul", description = "Convert Korean romaji lyrics to hangul", parameters = Array.Empty<string>() },
-            });
+            return Ok(BatchEditSpecs.Value.Values
+                .OrderBy(spec => spec.EditName, StringComparer.OrdinalIgnoreCase)
+                .Select(spec => new
+                {
+                    editName = spec.EditName,
+                    description = spec.Description,
+                    parameters = spec.Parameters
+                }));
         }
 
         [HttpPost("run")]
         public IActionResult RunBatchEdit(
-            [FromForm] IFormFile file, 
-            [FromQuery] string editName, 
+            [FromForm] IFormFile file,
+            [FromQuery] string editName,
             [FromQuery] int partIndex = 0,
             [FromQuery] int? quantize = 15,
             [FromQuery] string? lyric = null,
@@ -76,140 +43,15 @@ namespace OpenUtau.Api.Controllers
             [FromQuery] double? ratio = null,
             [FromQuery] int? max = null)
         {
-            return ExecuteEdit(file, (project) => 
+            return ExecuteEdit(file, project =>
             {
                 if (partIndex < 0 || partIndex >= project.parts.Count) return;
                 var part = project.parts[partIndex] as UVoicePart;
                 if (part == null) return;
-                
-                BatchEdit edit = null;
-                switch (editName.ToLowerInvariant())
+                var edit = CreateBatchEdit(editName, quantize, lyric, name, deltaNoteNum, ratio, max);
+                if (edit == null)
                 {
-                    case "quantize":
-                        edit = new QuantizeNotes(quantize ?? 15);
-                        break;
-                    case "auto-legato":
-                        edit = new AutoLegato();
-                        break;
-                    case "fix-overlap":
-                        edit = new FixOverlap();
-                        break;
-                    case "load-rendered-pitch":
-                        edit = new LoadRenderedPitch();
-                        break;
-                    case "bake-pitch":
-                        edit = new BakePitch();
-                        break;
-                    case "refresh-real-curves":
-                        edit = new RefreshRealCurves();
-                        break;
-                    case "add-tail-dash":
-                        edit = new AddTailNote("-", name ?? "pianoroll.menu.notes.addtaildash");
-                        break;
-                    case "add-tail-rest":
-                        edit = new AddTailNote(lyric ?? "R", name ?? "pianoroll.menu.notes.addtailrest");
-                        break;
-                    case "remove-tail-dash":
-                        edit = new RemoveTailNote("-", name ?? "pianoroll.menu.notes.removetaildash");
-                        break;
-                    case "remove-tail-rest":
-                        edit = new RemoveTailNote(lyric ?? "R", name ?? "pianoroll.menu.notes.removetailrest");
-                        break;
-                    case "transpose":
-                        edit = new Transpose(deltaNoteNum ?? 0, name ?? "api.batchedit.transpose");
-                        break;
-                    case "octave-up":
-                        edit = new Transpose(12, name ?? "pianoroll.menu.notes.octaveup");
-                        break;
-                    case "octave-down":
-                        edit = new Transpose(-12, name ?? "pianoroll.menu.notes.octavedown");
-                        break;
-                    case "commonnote-copy":
-                        edit = new CommonnoteCopy();
-                        break;
-                    case "commonnote-paste":
-                        edit = new CommonnotePaste();
-                        break;
-                    case "add-breath-note":
-                        edit = new AddBreathNote(lyric ?? "br");
-                        break;
-                    case "randomize-timing":
-                        edit = new RandomizeTiming();
-                        break;
-                    case "randomize-phoneme-offset":
-                        edit = new RandomizePhonemeOffset();
-                        break;
-                    case "randomize-tuning":
-                        edit = new RandomizeTuning(max ?? 100);
-                        break;
-                    case "lengthen-crossfade":
-                        edit = new LengthenCrossfade(ratio ?? 0.5);
-                        break;
-                    case "remove-tone-suffix":
-                        edit = new RemoveToneSuffix();
-                        break;
-                    case "remove-letter-suffix":
-                        edit = new RemoveLetterSuffix();
-                        break;
-                    case "move-suffix-to-voice-color":
-                        edit = new MoveSuffixToVoiceColor();
-                        break;
-                    case "remove-phonetic-hint":
-                        edit = new RemovePhoneticHint();
-                        break;
-                    case "dash-to-plus":
-                        edit = new DashToPlus();
-                        break;
-                    case "dash-to-plus-tilda":
-                        edit = new DashToPlusTilda();
-                        break;
-                    case "insert-slur":
-                        edit = new InsertSlur();
-                        break;
-                    case "romaji-to-hiragana":
-                        edit = new RomajiToHiragana();
-                        break;
-                    case "hiragana-to-romaji":
-                        edit = new HiraganaToRomaji();
-                        break;
-                    case "japanese-vcv-to-cv":
-                        edit = new JapaneseVCVtoCV();
-                        break;
-                    case "katakana-to-hiragana":
-                        edit = new KatakanaToHiragana();
-                        break;
-                    case "hiragana-to-katakana":
-                        edit = new HiraganaToKatakana();
-                        break;
-                    case "korean-romaji-to-hangeul":
-                        edit = new KoreanRomajiToHangeul();
-                        break;
-                    case "hanzi-to-pinyin":
-                        edit = new HanziToPinyin();
-                        break;
-                    case "reset-pitch":
-                        edit = new ResetPitchBends();
-                        break;
-                    case "reset-vibrato":
-                        edit = new ResetVibratos();
-                        break;
-                    case "reset-all-expressions":
-                        edit = new ResetAllExpressions();
-                        break;
-                    case "clear-vibratos":
-                        edit = new ClearVibratos();
-                        break;
-                    case "reset-aliases":
-                        edit = new ResetAliases();
-                        break;
-                    case "clear-timings":
-                        edit = new ClearTimings();
-                        break;
-                    case "reset-all":
-                        edit = new ResetAll();
-                        break;
-                    default:
-                        throw new ArgumentException("Unknown batch edit type: " + editName);
+                    throw new ArgumentException("Unknown batch edit type: " + editName);
                 }
 
                 if (edit != null)
@@ -217,6 +59,237 @@ namespace OpenUtau.Api.Controllers
                     edit.Run(project, part, part.notes.ToList(), DocManager.Inst);
                 }
             });
+        }
+
+        private static BatchEdit? CreateBatchEdit(
+            string editName,
+            int? quantize,
+            string? lyric,
+            string? name,
+            int? deltaNoteNum,
+            double? ratio,
+            int? max)
+        {
+            if (string.IsNullOrWhiteSpace(editName) || !BatchEditSpecs.Value.TryGetValue(editName, out var spec))
+            {
+                return null;
+            }
+
+            return spec.Factory(new BatchEditArgs
+            {
+                Quantize = quantize,
+                Lyric = lyric,
+                Name = name,
+                DeltaNoteNum = deltaNoteNum,
+                Ratio = ratio,
+                Max = max
+            });
+        }
+
+        private static IReadOnlyDictionary<string, BatchEditSpec> BuildBatchEditSpecs()
+        {
+            var specs = DiscoverBatchEditSpecs()
+                .Concat(GetManualBatchEditSpecs())
+                .GroupBy(spec => spec.EditName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+
+            return new System.Collections.ObjectModel.ReadOnlyDictionary<string, BatchEditSpec>(specs);
+        }
+
+        private static IEnumerable<BatchEditSpec> DiscoverBatchEditSpecs()
+        {
+            foreach (var type in AppDomain.CurrentDomain.GetAssemblies().SelectMany(GetLoadableTypes))
+            {
+                if (type == null || type.IsAbstract || !typeof(BatchEdit).IsAssignableFrom(type))
+                {
+                    continue;
+                }
+
+                if (type.GetConstructor(Type.EmptyTypes) == null)
+                {
+                    continue;
+                }
+
+                var editName = ToKebabCase(type.Name);
+                if (string.IsNullOrWhiteSpace(editName))
+                {
+                    continue;
+                }
+
+                BatchEdit? instance;
+                try
+                {
+                    instance = Activator.CreateInstance(type) as BatchEdit;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (instance == null)
+                {
+                    continue;
+                }
+
+                yield return new BatchEditSpec
+                {
+                    EditName = editName,
+                    Description = string.IsNullOrWhiteSpace(instance.GetType().Name) ? editName : instance.GetType().Name,
+                    Parameters = Array.Empty<string>(),
+                    Factory = _ => (BatchEdit)Activator.CreateInstance(type)!
+                };
+            }
+        }
+
+        private static IEnumerable<BatchEditSpec> GetManualBatchEditSpecs()
+        {
+            yield return new BatchEditSpec
+            {
+                EditName = "reset-pitch",
+                Description = "Reset pitch bends",
+                Parameters = Array.Empty<string>(),
+                Factory = _ => new ResetPitchBends()
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "reset-vibrato",
+                Description = "Reset vibratos",
+                Parameters = Array.Empty<string>(),
+                Factory = _ => new ResetVibratos()
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "quantize",
+                Description = "Quantize selected notes",
+                Parameters = new[] { "quantize" },
+                Factory = args => new QuantizeNotes(args.Quantize ?? 15)
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "add-tail-dash",
+                Description = "Add tail notes with dash lyric",
+                Parameters = new[] { "lyric" },
+                Factory = args => new AddTailNote("-", args.Name ?? "pianoroll.menu.notes.addtaildash")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "add-tail-rest",
+                Description = "Add tail notes with rest lyric",
+                Parameters = new[] { "lyric" },
+                Factory = args => new AddTailNote(args.Lyric ?? "R", args.Name ?? "pianoroll.menu.notes.addtailrest")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "remove-tail-dash",
+                Description = "Remove dash tail notes",
+                Parameters = new[] { "lyric" },
+                Factory = args => new RemoveTailNote("-", args.Name ?? "pianoroll.menu.notes.removetaildash")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "remove-tail-rest",
+                Description = "Remove rest tail notes",
+                Parameters = new[] { "lyric" },
+                Factory = args => new RemoveTailNote(args.Lyric ?? "R", args.Name ?? "pianoroll.menu.notes.removetailrest")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "transpose",
+                Description = "Transpose selected notes by semitones",
+                Parameters = new[] { "deltaNoteNum" },
+                Factory = args => new Transpose(args.DeltaNoteNum ?? 0, args.Name ?? "api.batchedit.transpose")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "octave-up",
+                Description = "Transpose selected notes up one octave",
+                Parameters = Array.Empty<string>(),
+                Factory = args => new Transpose(12, args.Name ?? "pianoroll.menu.notes.octaveup")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "octave-down",
+                Description = "Transpose selected notes down one octave",
+                Parameters = Array.Empty<string>(),
+                Factory = args => new Transpose(-12, args.Name ?? "pianoroll.menu.notes.octavedown")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "add-breath-note",
+                Description = "Insert breath notes",
+                Parameters = new[] { "lyric" },
+                Factory = args => new AddBreathNote(args.Lyric ?? "br")
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "randomize-tuning",
+                Description = "Randomize tuning values",
+                Parameters = new[] { "max" },
+                Factory = args => new RandomizeTuning(args.Max ?? 100)
+            };
+            yield return new BatchEditSpec
+            {
+                EditName = "lengthen-crossfade",
+                Description = "Lengthen crossfade overlap",
+                Parameters = new[] { "ratio" },
+                Factory = args => new LengthenCrossfade(args.Ratio ?? 0.5)
+            };
+        }
+
+        private static IEnumerable<Type> GetLoadableTypes(System.Reflection.Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                return ex.Types.Where(type => type != null)!;
+            }
+        }
+
+        private static string ToKebabCase(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            var result = new List<char>(name.Length * 2);
+            for (int i = 0; i < name.Length; i++)
+            {
+                var ch = name[i];
+                if (char.IsUpper(ch))
+                {
+                    if (i > 0)
+                    {
+                        var prev = name[i - 1];
+                        var next = i + 1 < name.Length ? name[i + 1] : '\0';
+                        if (char.IsLower(prev) || (char.IsUpper(prev) && char.IsLower(next)))
+                        {
+                            result.Add('-');
+                        }
+                    }
+
+                    result.Add(char.ToLowerInvariant(ch));
+                }
+                else if (ch == '_')
+                {
+                    result.Add('-');
+                }
+                else
+                {
+                    result.Add(ch);
+                }
+            }
+
+            var kebab = new string(result.ToArray());
+            while (kebab.Contains("--"))
+            {
+                kebab = kebab.Replace("--", "-");
+            }
+
+            return kebab.Trim('-');
         }
 
         private IActionResult ExecuteEdit([FromForm] IFormFile file, Action<UProject> modifier)
@@ -248,6 +321,24 @@ namespace OpenUtau.Api.Controllers
             {
                 return StatusCode(500, new { error = ex.Message });
             }
+        }
+
+        private sealed class BatchEditSpec
+        {
+            public string EditName { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+            public string[] Parameters { get; set; } = Array.Empty<string>();
+            public Func<BatchEditArgs, BatchEdit> Factory { get; set; } = _ => throw new InvalidOperationException();
+        }
+
+        private sealed class BatchEditArgs
+        {
+            public int? Quantize { get; set; }
+            public string? Lyric { get; set; }
+            public string? Name { get; set; }
+            public int? DeltaNoteNum { get; set; }
+            public double? Ratio { get; set; }
+            public int? Max { get; set; }
         }
     }
 
