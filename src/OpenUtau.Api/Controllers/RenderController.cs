@@ -123,17 +123,23 @@ namespace OpenUtau.Api.Controllers
                 var tokenSource = new CancellationTokenSource();
                 var taskId = Guid.NewGuid();
                 _activeRenders.TryAdd(taskId, tokenSource);
+                RenderProgressMonitor.Instance.ReportProgress(0, "Rendering part...");
                 
                 // Wait for the render to complete
                 Tuple<OpenUtau.Core.SignalChain.WaveMix, System.Collections.Generic.List<OpenUtau.Core.SignalChain.Fader>> renderResult;
                 try {
-                    renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                    renderResult = await Task.Run(() => engine.RenderMixdown(
+                        DocManager.Inst.MainScheduler,
+                        ref tokenSource,
+                        true,
+                        (progress, info) => RenderProgressMonitor.Instance.ReportProgress(progress, info)));
                 } finally {
                     _activeRenders.TryRemove(taskId, out _);
                     tokenSource.Dispose();
                 }
                 var mix = renderResult.Item1;
 
+                RenderProgressMonitor.Instance.ReportProgress(100, "Rendered part.");
                 var outAudioTemp = Path.GetTempFileName() + ".wav";
                 CheckFileWritable(outAudioTemp);
                 ISampleProvider sampleProvider = new ExportAdapter(mix);
@@ -197,16 +203,22 @@ namespace OpenUtau.Api.Controllers
                 var tokenSource = new CancellationTokenSource();
                 var taskId = Guid.NewGuid();
                 _activeRenders.TryAdd(taskId, tokenSource);
+                RenderProgressMonitor.Instance.ReportProgress(0, "Rendering mixdown...");
                 
                 Tuple<OpenUtau.Core.SignalChain.WaveMix, System.Collections.Generic.List<OpenUtau.Core.SignalChain.Fader>> renderResult;
                 try {
-                    renderResult = await Task.Run(() => engine.RenderMixdown(DocManager.Inst.MainScheduler, ref tokenSource, true));
+                    renderResult = await Task.Run(() => engine.RenderMixdown(
+                        DocManager.Inst.MainScheduler,
+                        ref tokenSource,
+                        true,
+                        (progress, info) => RenderProgressMonitor.Instance.ReportProgress(progress, info)));
                 } finally {
                     _activeRenders.TryRemove(taskId, out _);
                     tokenSource.Dispose();
                 }
                 var mix = renderResult.Item1;
 
+                RenderProgressMonitor.Instance.ReportProgress(100, "Rendered mixdown.");
                 var outAudioTemp = Path.GetTempFileName() + ".wav";
                 CheckFileWritable(outAudioTemp);
                 ISampleProvider sampleProvider = new ExportAdapter(mix);

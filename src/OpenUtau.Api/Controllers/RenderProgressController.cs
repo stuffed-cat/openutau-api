@@ -83,6 +83,8 @@ namespace OpenUtau.Api.Controllers
 
         public double Progress { get; private set; }
         public string Info { get; private set; }
+        double lastProgress = double.NaN;
+        string lastInfo = null;
 
         public event EventHandler<RenderProgressEventArgs> ProgressUpdated;
 
@@ -96,10 +98,21 @@ namespace OpenUtau.Api.Controllers
         {
             if (cmd is ProgressBarNotification pbn)
             {
-                Progress = pbn.Progress;
-                Info = pbn.Info;
-                ProgressUpdated?.Invoke(this, new RenderProgressEventArgs { Progress = pbn.Progress, Info = pbn.Info });
+                ReportProgress(pbn.Progress, pbn.Info);
             }
+        }
+
+        public void ReportProgress(double progress, string info)
+        {
+            if (progress == lastProgress && info == lastInfo)
+            {
+                return;
+            }
+            lastProgress = progress;
+            lastInfo = info;
+            Progress = progress;
+            Info = info;
+            ProgressUpdated?.Invoke(this, new RenderProgressEventArgs { Progress = progress, Info = info });
         }
     }
 }

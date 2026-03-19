@@ -1,5 +1,7 @@
 using System.IO;
+using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -23,17 +25,25 @@ namespace OpenUtau.Api.Tests
 
         private IFormFile CreateRealUstxFile()
         {
+            return CreateRealUstxFile(1);
+        }
+
+        private IFormFile CreateRealUstxFile(int noteCount)
+        {
             var project = OpenUtau.Core.Format.Ustx.Create();
             var track = new UTrack();
             project.tracks.Add(track);
             var part = new UVoicePart() { position = 0, trackNo = 0 };
-            var note = UNote.Create();
-            note.duration = 480;
-            note.tone = 60;
-            note.lyric = "a";
-            note.pitch.AddPoint(new PitchPoint(0, 0));
-            note.pitch.AddPoint(new PitchPoint(0, 0));
-            part.notes.Add(note);
+            for (var i = 0; i < noteCount; i++) {
+                var note = UNote.Create();
+                note.position = i * 480;
+                note.duration = 480;
+                note.tone = 60 + i;
+                note.lyric = "a";
+                note.pitch.AddPoint(new PitchPoint(0, 0));
+                note.pitch.AddPoint(new PitchPoint(0, 0));
+                part.notes.Add(note);
+            }
             project.parts.Add(part);
 
             string tempFile = Path.GetTempFileName() + ".ustx";
@@ -112,6 +122,44 @@ namespace OpenUtau.Api.Tests
             Assert.NotNull(result);
             Assert.Equal("audio/wav", result.ContentType);
             Assert.True(result.FileStream.Length > 0);
+        }
+
+        [Fact]
+        public async Task RenderMixdown_EmitsProgressUpdates()
+        {
+            var updates = new List<double>();
+            var gate = new ManualResetEventSlim();
+
+            void OnProgress(object sender, RenderProgressEventArgs e)
+            {
+                lock (updates) {
+                    updates.Add(e.Progress);
+                }
+                gate.Set();
+            }
+
+            var monitor = RenderProgressMonitor.Instance;
+            monitor.ProgressUpdated += OnProgress;
+
+            try
+            {
+                var file = CreateRealUstxFile(4);
+
+                var result = await _controller.RenderMixdown(file);
+                var fileResult = Assert.IsType<FileStreamResult>(result);
+                Assert.Equal("audio/wav", fileResult.ContentType);
+
+                Assert.True(gate.Wait(5000), "Did not receive any render progress updates.");
+                lock (updates) {
+                    Assert.True(updates.Count >= 2, $"Expected multiple progress updates, got {updates.Count}.");
+                    Assert.Contains(updates, p => p > 0);
+                }
+            }
+            finally
+            {
+                monitor.ProgressUpdated -= OnProgress;
+                gate.Dispose();
+            }
         }
     }
 }
