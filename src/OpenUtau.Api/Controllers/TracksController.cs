@@ -16,6 +16,45 @@ namespace OpenUtau.Api.Controllers
     [Route("api/project/[controller]")]
     public class TracksController : ControllerBase
     {
+        public class ClassicFlagRequest
+        {
+            public string Flag { get; set; } = string.Empty;
+            public int? Value { get; set; }
+        }
+
+        public class ClassicFlagsRequest
+        {
+            public List<ClassicFlagRequest> Flags { get; set; } = new List<ClassicFlagRequest>();
+        }
+
+        private static IEnumerable<UExpressionDescriptor> GetClassicFlagDescriptors(UProject project)
+        {
+            return project.expressions.Values
+                .Where(expr => !string.IsNullOrWhiteSpace(expr.flag) || expr.isFlag)
+                .OrderBy(expr => expr.flag, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(expr => expr.abbr, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool TryResolveClassicFlagDescriptor(UProject project, string flag, out UExpressionDescriptor descriptor)
+        {
+            descriptor = null;
+            if (string.IsNullOrWhiteSpace(flag))
+            {
+                return false;
+            }
+
+            var matches = GetClassicFlagDescriptors(project)
+                .Where(expr => string.Equals(expr.flag, flag, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (matches.Count != 1)
+            {
+                return false;
+            }
+
+            descriptor = matches[0];
+            return true;
+        }
+
         [HttpGet("/api/project/track/{trackNo}/properties")]
         public IActionResult GetTrackProperties(int trackNo) {
             var project = DocManager.Inst.Project;
@@ -57,6 +96,102 @@ namespace OpenUtau.Api.Controllers
                 isFlag = expr.isFlag,
                 flag = expr.flag
             }).ToList());
+        }
+
+        [HttpGet("/api/project/track/{trackNo}/flags")]
+        public IActionResult GetTrackFlags(int trackNo)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+
+            if (trackNo < 0 || trackNo >= project.tracks.Count) return BadRequest("Invalid track index");
+            var track = project.tracks[trackNo];
+
+            Ustx.AddDefaultExpressions(project);
+            return Ok(new
+            {
+                trackNo = track.TrackNo,
+                flags = GetClassicFlagDescriptors(project).Select(descriptor =>
+                {
+                    var current = track.TrackExpressions.FirstOrDefault(exp => exp.abbr == descriptor.abbr) ?? descriptor;
+                    var value = (int?)Math.Round(current.CustomDefaultValue);
+                    return new
+                    {
+                        name = current.name,
+                        abbr = current.abbr,
+                        flag = current.flag,
+                        type = current.type.ToString(),
+                        value,
+                        option = current.type == UExpressionType.Options && current.options != null && value.HasValue && value.Value >= 0 && value.Value < current.options.Length
+                            ? current.options[value.Value]
+                            : null
+                    };
+                }).ToList()
+            });
+        }
+
+        [HttpPut("/api/project/track/{trackNo}/flags")]
+        public IActionResult SetTrackFlags(int trackNo, [FromBody] ClassicFlagsRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project loaded");
+
+            if (trackNo < 0 || trackNo >= project.tracks.Count) return BadRequest("Invalid track index");
+            if (request == null || request.Flags == null || request.Flags.Count == 0) return BadRequest("No flags provided");
+
+            var track = project.tracks[trackNo];
+            Ustx.AddDefaultExpressions(project);
+
+            try
+            {
+                var updatedTrackDescriptors = track.TrackExpressions.Select(descriptor => descriptor.Clone()).ToList();
+                foreach (var flag in request.Flags)
+                {
+                    if (!TryResolveClassicFlagDescriptor(project, flag.Flag, out var baseDescriptor))
+                    {
+                        return BadRequest(new { error = $"Flag '{flag.Flag}' not found or ambiguous." });
+                    }
+
+                    var existing = updatedTrackDescriptors.FirstOrDefault(descriptor => descriptor.abbr == baseDescriptor.abbr);
+                    if (!flag.Value.HasValue)
+                    {
+                        if (existing != null)
+                        {
+                            updatedTrackDescriptors.Remove(existing);
+                        }
+                        continue;
+                    }
+
+                    if (existing == null)
+                    {
+                        existing = baseDescriptor.Clone();
+                        updatedTrackDescriptors.Add(existing);
+                    }
+
+                    if (existing.type == UExpressionType.Options)
+                    {
+                        var value = flag.Value.Value;
+                        if (existing.options == null || value < 0 || value >= existing.options.Length)
+                        {
+                            return BadRequest(new { error = $"Flag '{flag.Flag}' value is out of range." });
+                        }
+                        existing.CustomDefaultValue = value;
+                    }
+                    else
+                    {
+                        existing.CustomDefaultValue = flag.Value.Value;
+                    }
+                }
+
+                DocManager.Inst.StartUndoGroup("api", true);
+                DocManager.Inst.ExecuteCmd(new ConfigureExpressionsCommand(project, project.expressions.Values.ToArray(), track, updatedTrackDescriptors.ToArray()));
+                DocManager.Inst.EndUndoGroup();
+                return Ok(new { message = "Track flags updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
         }
 
         [HttpPost("{trackIndex}/rename")]

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Api.Controllers;
 using OpenUtau.Core;
+using OpenUtau.Core.Format;
 using OpenUtau.Core.Ustx;
+using System.Collections.Generic;
 using Xunit;
 
 namespace OpenUtau.Api.Tests
@@ -48,6 +50,35 @@ namespace OpenUtau.Api.Tests
 
             var badRequest = Assert.IsType<BadRequestObjectResult>(result);
             Assert.Equal("Invalid noteIndex", badRequest.Value);
+        }
+
+        [Fact]
+        public void SetNoteFlags_UpdatesClassicFlags()
+        {
+            var result = _controller.SetNoteFlags(0, 0, new PhonemesController.ClassicFlagsRequest
+            {
+                Flags = new List<PhonemesController.ClassicFlagRequest>
+                {
+                    new PhonemesController.ClassicFlagRequest { Flag = "g", Value = -5 },
+                    new PhonemesController.ClassicFlagRequest { Flag = "P", Value = 92 }
+                }
+            });
+
+            Assert.IsType<OkObjectResult>(result);
+
+            var project = DocManager.Inst.Project;
+            var track = project.tracks[0];
+            var part = (UVoicePart)project.parts[0];
+            var note = part.notes.First();
+
+            Assert.Contains(note.phonemeExpressions, expr => expr.abbr == Ustx.GEN && expr.value == -5);
+            Assert.Contains(note.phonemeExpressions, expr => expr.abbr == Ustx.NORM && expr.value == 92);
+
+            var flagsResult = Assert.IsType<OkObjectResult>(_controller.GetNoteFlags(0, 0));
+            var flags = flagsResult.Value!;
+            var flagsProp = flags.GetType().GetProperty("flags")!;
+            var values = ((System.Collections.IEnumerable)flagsProp.GetValue(flags)!).Cast<object>().ToList();
+            Assert.Contains(values, item => item.GetType().GetProperty("flag")!.GetValue(item)?.ToString() == "g");
         }
 
         private static void ResetProject()

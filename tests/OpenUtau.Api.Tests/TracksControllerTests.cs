@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using OpenUtau.Api.Controllers;
 using OpenUtau.Core;
+using OpenUtau.Core.Format;
 using OpenUtau.Core.Ustx;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -94,6 +96,30 @@ namespace OpenUtau.Api.Tests
             var result = _controller.SetTrackSinger(0, "NonExistentSinger");
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
             Assert.Contains("not found", badRequestResult.Value.ToString());
+        }
+
+        [Fact]
+        public void SetTrackFlags_UpdatesClassicFlags()
+        {
+            var result = _controller.SetTrackFlags(0, new TracksController.ClassicFlagsRequest
+            {
+                Flags = new List<TracksController.ClassicFlagRequest>
+                {
+                    new TracksController.ClassicFlagRequest { Flag = "g", Value = -5 },
+                    new TracksController.ClassicFlagRequest { Flag = "B", Value = 50 }
+                }
+            });
+
+            Assert.IsType<OkObjectResult>(result);
+
+            var track = DocManager.Inst.Project.tracks[0];
+            Assert.Contains(track.TrackExpressions, expr => expr.abbr == Ustx.GEN && expr.CustomDefaultValue == -5);
+            Assert.Contains(track.TrackExpressions, expr => expr.abbr == Ustx.BRE && expr.CustomDefaultValue == 50);
+
+            var flags = Assert.IsType<OkObjectResult>(_controller.GetTrackFlags(0)).Value!;
+            var flagsProp = flags.GetType().GetProperty("flags")!;
+            var values = ((System.Collections.IEnumerable)flagsProp.GetValue(flags)!).Cast<object>().ToList();
+            Assert.Contains(values, item => item.GetType().GetProperty("flag")!.GetValue(item)?.ToString() == "g" && (int?)item.GetType().GetProperty("value")!.GetValue(item) == -5);
         }
 
         [Fact]
