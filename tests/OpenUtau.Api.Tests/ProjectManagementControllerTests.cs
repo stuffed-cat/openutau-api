@@ -148,19 +148,19 @@ namespace OpenUtau.Api.Tests
             var request = new ProjectManagementController.CommandRequest {
                 CommandType = "AddNoteCommand",
                 Args = JsonSerializer.SerializeToElement(new {
-                    partIndex = 0,
-                    note = new {
-                        position = 0,
-                        duration = 480,
-                        tone = 60,
-                        lyric = "la"
+                    partNo = 0,
+                    notes = new[] {
+                        new {
+                            position = 0,
+                            duration = 480,
+                            tone = 60,
+                            lyric = "la"
+                        }
                     }
                 })
             };
 
-            var response = _controller.SessionExecute(request) as OkObjectResult;
-
-            Assert.NotNull(response);
+            var response = Assert.IsType<OkObjectResult>(_controller.SessionExecute(request));
             Assert.Single(part.notes);
             Assert.Equal("la", part.notes.First().lyric);
             Assert.Equal(60, part.notes.First().tone);

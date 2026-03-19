@@ -831,7 +831,21 @@ namespace OpenUtau.Api.Controllers
             value = default;
 
             try {
-                value = JsonSerializer.Deserialize<T>(source.GetRawText());
+                value = JsonSerializer.Deserialize<T>(source.GetRawText(), new JsonSerializerOptions {
+                    IncludeFields = true,
+                    PropertyNameCaseInsensitive = true,
+                });
+                if (value is UNote note) {
+                    note.pitch ??= new UPitch();
+                    if (note.pitch.data.Count == 0) {
+                        int start = NotePresets.Default.DefaultPortamento.PortamentoStart;
+                        int length = NotePresets.Default.DefaultPortamento.PortamentoLength;
+                        var shape = NotePresets.Default.DefaultPitchShape;
+                        note.pitch.AddPoint(new PitchPoint(start, 0, shape));
+                        note.pitch.AddPoint(new PitchPoint(start + length, 0, shape));
+                    }
+                    note.vibrato ??= new UVibrato();
+                }
                 return true;
             } catch (Exception ex) {
                 error = ex.Message;

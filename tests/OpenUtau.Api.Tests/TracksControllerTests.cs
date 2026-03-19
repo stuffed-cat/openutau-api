@@ -99,30 +99,68 @@ namespace OpenUtau.Api.Tests
         [Fact]
         public void UpdateTrackPhonemizerConfig_ReplaceAndPatch_ReturnsUpdatedConfig()
         {
-            var factory = DocManager.Inst.PhonemizerFactories.FirstOrDefault(f =>
-                f.type.FullName == "OpenUtau.Core.DiffSinger.Phonemizers.DiffSingerRhythmizerPhonemizer" ||
-                f.name == "DiffSinger Rhythmizer Phonemizer");
+            var factories = DocManager.Inst.PhonemizerFactories ?? OpenUtau.Api.PhonemizerFactory.GetAll();
+            typeof(DocManager).GetProperty("PhonemizerFactories", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                ?.SetValue(DocManager.Inst, factories);
+            var selected = factories
+                .Select(factory => new {
+                    Factory = factory,
+                    Phonemizer = factory.Create(),
+                })
+                .Where(x => x.Phonemizer != null)
+                .Select(x => {
+                    var member = x.Phonemizer!.GetType()
+                        .GetMembers(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                        .FirstOrDefault(m =>
+                        {
+                            if (m.Name is "Name" or "Tag" or "Author" or "Language" or "Testing" or "singer" or "timeAxis" or "bpm" or "DictionariesPath" or "PluginDir") {
+                                return false;
+                            }
+                            if (m is FieldInfo field) {
+                                return (field.FieldType == typeof(string) || field.FieldType.IsPrimitive || field.FieldType.IsEnum);
+                            }
+                            if (m is PropertyInfo prop) {
+                                return prop.CanWrite && prop.GetIndexParameters().Length == 0 &&
+                                       (prop.PropertyType == typeof(string) || prop.PropertyType.IsPrimitive || prop.PropertyType.IsEnum);
+                            }
+                            return false;
+                        });
 
-            Assert.NotNull(factory);
+                    return new { x.Factory, x.Phonemizer, Member = member };
+                })
+                .FirstOrDefault(x => x.Member != null);
+
+            Assert.NotNull(selected);
+            Assert.NotNull(selected.Phonemizer);
+            Assert.NotNull(selected.Member);
+
+            object patchValue = selected.Member is FieldInfo field
+                ? field.FieldType == typeof(bool) ? true
+                : field.FieldType == typeof(int) ? 123
+                : field.FieldType.IsEnum ? Enum.GetValues(field.FieldType).GetValue(0)!
+                : "api_test_value"
+                : selected.Member is PropertyInfo prop && prop.PropertyType == typeof(bool) ? true
+                : selected.Member is PropertyInfo prop2 && prop2.PropertyType == typeof(int) ? 123
+                : selected.Member is PropertyInfo prop3 && prop3.PropertyType.IsEnum ? Enum.GetValues(prop3.PropertyType).GetValue(0)!
+                : "api_test_value";
 
             var result = _controller.UpdateTrackPhonemizerConfig(0, new TracksController.TrackPhonemizerConfigRequest {
-                PhonemizerType = factory.type.FullName,
-                ConfigPatch = JsonSerializer.SerializeToElement(new {
-                    rhythmizer = "api_test_rhythmizer"
+                PhonemizerType = selected.Factory.type.FullName,
+                ConfigPatch = JsonSerializer.SerializeToElement(new Dictionary<string, object?> {
+                    { selected.Member.Name, patchValue }
                 })
             });
 
-            var okResult = Assert.IsType<OkObjectResult>(result);
+            var response = Assert.IsAssignableFrom<ObjectResult>(result);
+            Assert.True((response.StatusCode ?? 200) == 200, response.Value?.ToString() ?? "null");
             var project = DocManager.Inst.Project;
             Assert.NotNull(project.tracks[0].Phonemizer);
-            Assert.Equal(factory.type.FullName, project.tracks[0].Phonemizer.GetType().FullName);
+            Assert.Equal(selected.Factory.type.FullName, project.tracks[0].Phonemizer.GetType().FullName);
 
-            var member = project.tracks[0].Phonemizer.GetType().GetField("rhythmizer", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                ?? (MemberInfo)project.tracks[0].Phonemizer.GetType().GetProperty("rhythmizer", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-
-            Assert.NotNull(member);
-            var value = member is FieldInfo field ? field.GetValue(project.tracks[0].Phonemizer) : ((PropertyInfo)member).GetValue(project.tracks[0].Phonemizer);
-            Assert.Equal("api_test_rhythmizer", value);
+            var member = selected.Member;
+            var value = member is FieldInfo field2 ? field2.GetValue(project.tracks[0].Phonemizer) : ((PropertyInfo)member).GetValue(project.tracks[0].Phonemizer);
+            var expected = patchValue is Array arr ? arr.GetValue(0) : patchValue;
+            Assert.Equal(expected, value);
         }
     }
 }
