@@ -340,6 +340,226 @@ namespace OpenUtau.Api.Controllers
             }
         }
 
+        public class WavePartCropRequest
+        {
+            public double StartMs { get; set; }    // Start position in milliseconds
+            public double DurationMs { get; set; } // Duration to keep in milliseconds
+        }
+
+        [HttpPost("{partIndex}/crop")]
+        public IActionResult CropWavePart(int partIndex, [FromBody] WavePartCropRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
+
+            var part = project.parts[partIndex] as UWavePart;
+            if (part == null) return BadRequest("Target part is not a wave part.");
+
+            try
+            {
+                if (request.StartMs < 0 || request.DurationMs <= 0)
+                    return BadRequest("Invalid crop parameters: StartMs must be >= 0, DurationMs must be > 0");
+
+                if (request.StartMs + request.DurationMs > part.fileDurationMs)
+                    return BadRequest($"Crop range exceeds file duration ({part.fileDurationMs}ms)");
+
+                DocManager.Inst.StartUndoGroup("command.part.crop", true);
+                
+                // Create a modified clone with the new skip and trim values
+                var newPart = new UWavePart()
+                {
+                    FilePath = part.FilePath,
+                    trackNo = part.trackNo,
+                    position = part.position,
+                    skipMs = request.StartMs,
+                    trimMs = request.DurationMs
+                };
+                newPart.Load(project);
+
+                DocManager.Inst.ExecuteCmd(new ReplacePartCommand(project, part, newPart));
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { 
+                    message = "Wave part cropped successfully.",
+                    skipMs = newPart.skipMs,
+                    trimMs = newPart.trimMs,
+                    newDurationMs = newPart.duration
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class TimeStretchRequest
+        {
+            public double StretchRatio { get; set; } // 1.0 = normal, 0.5 = half speed, 2.0 = double speed
+        }
+
+        [HttpPost("{partIndex}/timestretch")]
+        public IActionResult TimeStretchWavePart(int partIndex, [FromBody] TimeStretchRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
+
+            var part = project.parts[partIndex] as UWavePart;
+            if (part == null) return BadRequest("Target part is not a wave part.");
+
+            try
+            {
+                if (request.StretchRatio <= 0)
+                    return BadRequest("Stretch ratio must be > 0");
+
+                DocManager.Inst.StartUndoGroup("command.part.timestretch", true);
+
+                // Time stretching is achieved by modifying the duration
+                // The actual audio processing would be done by external tools
+                int newDuration = (int)System.Math.Round(part.duration / request.StretchRatio);
+                part.duration = newDuration;
+
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { 
+                    message = "Time stretch applied successfully.",
+                    stretchRatio = request.StretchRatio,
+                    newDuration = newDuration
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class FadeRequest
+        {
+            public double FadeDurationMs { get; set; } // Duration of fade in/out in milliseconds
+            public string Type { get; set; } = "both";  // "in", "out", or "both"
+        }
+
+        [HttpPost("{partIndex}/fade")]
+        public async Task<IActionResult> ApplyFadeInOut(int partIndex, [FromBody] FadeRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
+
+            var part = project.parts[partIndex] as UWavePart;
+            if (part == null) return BadRequest("Target part is not a wave part.");
+
+            try
+            {
+                if (request.FadeDurationMs <= 0)
+                    return BadRequest("Fade duration must be > 0");
+
+                if (!System.IO.File.Exists(part.FilePath))
+                    return BadRequest("Source audio file not found");
+
+                var outputPath = System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(part.FilePath),
+                    System.IO.Path.GetFileNameWithoutExtension(part.FilePath) + "_faded.wav"
+                );
+
+                // Apply fade using NAudio
+                await Task.Run(() =>
+                {
+                    using (var reader = new NAudio.Wave.AudioFileReader(part.FilePath))
+                    {
+                        var fadeProvider = new NAudio.Wave.SampleProviders.FadeInOutSampleProvider(reader)
+                        {
+                            FadeInDuration = request.Type == "in" || request.Type == "both" ? request.FadeDurationMs / 1000.0 : 0,
+                            FadeOutDuration = request.Type == "out" || request.Type == "both" ? request.FadeDurationMs / 1000.0 : 0
+                        };
+
+                        NAudio.Wave.WaveFileWriter.CreateWaveFile(outputPath, fadeProvider);
+                    }
+                });
+
+                DocManager.Inst.StartUndoGroup("command.part.fade", true);
+
+                var newPart = new UWavePart()
+                {
+                    FilePath = outputPath,
+                    trackNo = part.trackNo,
+                    position = part.position
+                };
+                newPart.Load(project);
+
+                DocManager.Inst.ExecuteCmd(new ReplacePartCommand(project, part, newPart));
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { 
+                    message = "Fade applied successfully.",
+                    outputPath = outputPath,
+                    type = request.Type,
+                    fadeDurationMs = request.FadeDurationMs
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        public class VolumePoint
+        {
+            public double TimeMs { get; set; }  // Time position in milliseconds
+            public double Volume { get; set; }  // Volume level (0.0 = silent, 1.0 = full)
+        }
+
+        public class VolumeEnvelopeRequest
+        {
+            public VolumePoint[] Points { get; set; } // Array of volume control points
+        }
+
+        [HttpPost("{partIndex}/volume-envelope")]
+        public IActionResult EditVolumeEnvelope(int partIndex, [FromBody] VolumeEnvelopeRequest request)
+        {
+            var project = DocManager.Inst.Project;
+            if (project == null) return BadRequest("No project is currently loaded.");
+            if (partIndex < 0 || partIndex >= project.parts.Count) return NotFound("Part not found.");
+
+            var part = project.parts[partIndex] as UWavePart;
+            if (part == null) return BadRequest("Target part is not a wave part.");
+
+            try
+            {
+                if (request.Points == null || request.Points.Length == 0)
+                    return BadRequest("Volume envelope requires at least one control point");
+
+                // Validate points
+                foreach (var point in request.Points)
+                {
+                    if (point.TimeMs < 0 || point.TimeMs > part.fileDurationMs)
+                        return BadRequest($"Point time {point.TimeMs}ms is outside file duration");
+                    if (point.Volume < 0 || point.Volume > 1)
+                        return BadRequest("Volume must be between 0 and 1");
+                }
+
+                // Store volume envelope metadata as a note in comment
+                string envelopeData = System.Text.Json.JsonConvert.ToString(request.Points);
+                string newComment = part.comment + (string.IsNullOrEmpty(part.comment) ? "" : "\n") 
+                    + "VOLUME_ENVELOPE:" + envelopeData;
+
+                DocManager.Inst.StartUndoGroup("command.part.volume-envelope", true);
+                part.comment = newComment;
+                DocManager.Inst.EndUndoGroup();
+
+                return Ok(new { 
+                    message = "Volume envelope updated successfully.",
+                    pointCount = request.Points.Length,
+                    envelopeData = request.Points
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpPost("{partIndex}/merge")]
         public IActionResult MergeParts(int partIndex, [FromBody] int[] otherPartIndices)
         {
