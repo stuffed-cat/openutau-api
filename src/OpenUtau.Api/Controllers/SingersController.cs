@@ -88,8 +88,9 @@ namespace OpenUtau.Api.Controllers
         }
 
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteSinger(string id)
+        public IActionResult DeleteSinger(string id)
         {
+            // 通过唯一ID查找歌手
             var singer = SingerManager.Inst.Singers.Values.FirstOrDefault(s => s.Id == id);
             if (singer == null)
             {
@@ -98,13 +99,13 @@ namespace OpenUtau.Api.Controllers
 
             try
             {
-                var uninstaller = new VoicebankUninstaller(string.Empty, (progress, info) => {
-                    // Log progress if needed
-                });
+                // 获取当前声库配置文件所在的文件夹根目录并将其整个删除
+                if (!string.IsNullOrEmpty(singer.Location) && System.IO.Directory.Exists(singer.Location))
+                {
+                    System.IO.Directory.Delete(singer.Location, true);
+                }
                 
-                await Task.Run(() => uninstaller.Uninstall(singer.Location));
-                
-                // Refresh singer list
+                // 删除完毕后触发全局搜索扫描以刷新已加载的声库列表
                 SingerManager.Inst.SearchAllSingers();
                 return Ok(new { message = "Singer deleted successfully" });
             }
@@ -113,7 +114,7 @@ namespace OpenUtau.Api.Controllers
                 return BadRequest(new { error = $"Failed to delete singer: {e.Message}" });
             }
         }
-
+        
         [HttpGet("{id}/image")]
         public IActionResult GetSingerImage(string id)
         {
