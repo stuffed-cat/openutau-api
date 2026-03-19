@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using System.IO;
 using System.Threading.Tasks;
 using OpenUtau.Core;
+using OpenUtau.Classic;
 using System.Linq;
 
 namespace OpenUtau.Api.Controllers
@@ -97,25 +98,13 @@ namespace OpenUtau.Api.Controllers
 
             try
             {
-                // 首先尝试使用 PackageManager 卸载（如果是通过包管理器安装的）
-                var installed = await PackageManager.Inst.GetInstalledAsync();
-                var package = installed.FirstOrDefault(p => p.id == id);
+                var uninstaller = new VoicebankUninstaller(string.Empty, (progress, info) => {
+                    // Log progress if needed
+                });
                 
-                if (package != null)
-                {
-                    // 这是一个通过包管理器安装的包
-                    await PackageManager.Inst.UninstallAsync(id);
-                }
-                else
-                {
-                    // 这是本地安装的歌手，直接删除文件夹
-                    if (!string.IsNullOrEmpty(singer.Location) && System.IO.Directory.Exists(singer.Location))
-                    {
-                        System.IO.Directory.Delete(singer.Location, true);
-                    }
-                }
+                await Task.Run(() => uninstaller.Uninstall(singer.Location));
                 
-                // 重新扫描所有歌手
+                // Refresh singer list
                 SingerManager.Inst.SearchAllSingers();
                 return Ok(new { message = "Singer deleted successfully" });
             }
